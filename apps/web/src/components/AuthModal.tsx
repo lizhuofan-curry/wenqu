@@ -1,11 +1,13 @@
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, X } from "lucide-react";
 import { useState } from "react";
+import { saveProfile } from "../lib/storage";
+import type { LocalProfile } from "../lib/storage";
 
 type AuthModalProps = {
   open: boolean;
   initialMode: "login" | "register";
   onClose: () => void;
-  onSuccess: (name: string) => void;
+  onSuccess: (profile: LocalProfile) => void;
 };
 
 export function AuthModal({
@@ -26,10 +28,15 @@ export function AuthModal({
   function submit(event: React.FormEvent) {
     event.preventDefault();
     const displayName = name.trim() || email.split("@")[0] || "问渠学友";
-    localStorage.setItem("wenqu-demo-user", displayName);
+    const profile = {
+      displayName,
+      email: email.trim().toLowerCase(),
+      createdAt: new Date().toISOString(),
+    };
+    saveProfile(profile);
     setDone(true);
     window.setTimeout(() => {
-      onSuccess(displayName);
+      onSuccess(profile);
       setDone(false);
       onClose();
     }, 650);
@@ -58,7 +65,7 @@ export function AuthModal({
           <div className="auth-success">
             <CheckCircle2 size={44} />
             <h2>欢迎来到问渠</h2>
-            <p>演示账户已创建，你的学习记录会保存在当前浏览器。</p>
+            <p>本地档案已创建。昵称、邮箱和学习记录保存在当前浏览器，密码不会保存。</p>
           </div>
         ) : (
           <>
@@ -105,8 +112,13 @@ export function AuthModal({
                     placeholder="至少 6 位"
                     required
                   />
-                  <button type="button" onClick={() => setVisible((value) => !value)}>
-                    {visible ? <EyeOff size={17} /> : <Eye size={17} />}
+                  <button
+                    type="button"
+                    onClick={() => setVisible((value) => !value)}
+                    aria-label={visible ? "隐藏密码" : "显示密码"}
+                    title={visible ? "当前密码可见，点击隐藏" : "当前密码已隐藏，点击显示"}
+                  >
+                    {visible ? <Eye size={17} /> : <EyeOff size={17} />}
                   </button>
                 </div>
               </label>
@@ -126,7 +138,9 @@ export function AuthModal({
                 {mode === "register" ? "直接登录" : "免费注册"}
               </button>
             </p>
-            <p className="demo-notice">当前为公开演示版，不会向服务器提交账户信息。</p>
+            <p className="demo-notice">
+              当前为浏览器本地档案：不向服务器提交账户信息，也不会保存密码。
+            </p>
           </>
         )}
       </section>

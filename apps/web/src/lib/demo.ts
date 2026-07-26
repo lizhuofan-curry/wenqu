@@ -1,5 +1,4 @@
 import type {
-  ArchiveItem,
   EvaluationResult,
   Material,
   Persona,
@@ -190,22 +189,4 @@ export function evaluateDemoSession(session: Session): Session {
     completed_at: new Date().toISOString(),
     result,
   };
-}
-
-export function demoArchive(session?: Session): ArchiveItem[] {
-  const completedAt = session?.completed_at || "2026-07-27T08:30:00.000Z";
-  return [
-    {
-      session_id: session?.id || "demo-archive-1",
-      material_id: demoMaterial.id,
-      material_title: demoMaterial.title,
-      persona_name:
-        demoPersonas.find((item) => item.id === session?.persona_id)?.name || "黄风教练",
-      completed_at: completedAt,
-      mastery: session?.result?.mastery || 82,
-      headline: session?.result?.headline || "核心机制已掌握，结构位置值得复习",
-      misconception_tags: session?.result?.misconception_tags || ["残差分支位置"],
-      retelling: "SE 模块先汇聚全局信息，再学习通道权重并缩放原特征。",
-    },
-  ];
 }

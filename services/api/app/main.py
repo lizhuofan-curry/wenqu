@@ -49,11 +49,19 @@ def public_material(material: MaterialInternal) -> MaterialPublic:
 
 @app.get("/api/health")
 def health() -> dict[str, str | bool]:
+    provider = settings.ai_provider
+    ai_configured = (
+        bool(settings.deepseek_api_key)
+        if provider == "deepseek"
+        else bool(settings.openai_api_key)
+    )
+    model = settings.deepseek_model if provider == "deepseek" else settings.openai_model
     return {
         "status": "ok",
         "version": "v.0",
-        "ai_configured": bool(settings.openai_api_key),
-        "model": settings.openai_model,
+        "ai_configured": ai_configured,
+        "ai_provider": provider,
+        "model": model,
     }
 
 

@@ -18,6 +18,9 @@
 - 发布推荐公开演示站点 <https://lizhuofan-curry.github.io/wenqu/>；
 - 发布 Vercel 备用站点 <https://wenqu-reading-room.vercel.app>；
 - GitHub 仓库更名为 `wenqu`、转为公开，并更新带表情的项目描述；
+- 修复密码显隐语义，完成学习记录浏览器持久化与 JSON 导出；
+- 将首页指标、学习洞察和错因图谱改为读取真实记录；
+- 后端增加 DeepSeek / OpenAI 可切换能力和结构化输出校验；
 - 更新 README 与实时进度文档。
 
 ## 主要文件
@@ -41,7 +44,9 @@
 - 原型图均由正式 React 前端生成。
 - Sites 生产版本 4 部署成功，访问模式为公开。
 - GitHub Pages 返回 `200 OK`，真实 Chrome 导航和 SENet 入口验收通过，控制台无错误。
+- Chrome 完成注册 → SENet → 诊断 → 档案全流程，记录状态为 `completed`，密码未保存。
+- `pnpm check` 全部通过，Pytest 为 `4 passed`。
 
 ## 下一步
 
-最高优先级：邀请第一位真实学习者打开公网链接并完成 SENet 流程，记录完成时间、退出点和反馈；确认朋友的 GitHub 用户名后建立 Collaborator + Issue + Pull Request 共创流程。
+最高优先级：接入生产数据库和身份认证，使手机与电脑的账户、答案、复述和诊断能够集中落库并跨设备同步；随后安全配置 DeepSeek 密钥并完成真实材料生成。

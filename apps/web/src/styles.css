@@ -3014,6 +3014,14 @@ p {
   font-size: 10px;
 }
 
+.archive-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .archive-count strong {
   color: var(--gold-soft);
   font-size: 20px;

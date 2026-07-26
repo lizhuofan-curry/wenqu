@@ -4,7 +4,6 @@ import {
   Clock3,
   FileSearch,
   FileText,
-  MoreHorizontal,
   UploadCloud,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -19,10 +18,19 @@ type Props = {
 
 export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
   const inputRef = useRef<HTMLInputElement>(null);
-  const filtered = materials.filter((item) =>
-    `${item.title} ${item.subtitle}`.toLowerCase().includes(query.toLowerCase()),
-  );
+  const filtered = materials.filter((item) => {
+    const matchesQuery = `${item.title} ${item.subtitle}`
+      .toLowerCase()
+      .includes(query.toLowerCase());
+    const matchesFilter =
+      filter === "all" ||
+      (filter === "paper" && ["builtin", "pdf"].includes(item.source_type)) ||
+      (filter === "notes" && item.source_type === "markdown") ||
+      (filter === "completed" && item.progress >= 100);
+    return matchesQuery && matchesFilter;
+  });
 
   return (
     <div className="standard-page page-enter">
@@ -57,10 +65,20 @@ export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
           />
         </div>
         <div className="filter-pills">
-          <button className="active">全部</button>
-          <button>论文</button>
-          <button>笔记</button>
-          <button>已完成</button>
+          {[
+            ["all", "全部"],
+            ["paper", "论文"],
+            ["notes", "笔记"],
+            ["completed", "已完成"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              className={filter === id ? "active" : ""}
+              onClick={() => setFilter(id as typeof filter)}
+            >
+              {label}
+            </button>
+          ))}
         </div>
       </div>
       <div className="library-grid">
@@ -73,9 +91,6 @@ export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
                 <FileText size={30} />
               )}
               <span>{material.source_type === "builtin" ? "CVPR 2018" : "YOUR DOC"}</span>
-              <button aria-label="更多操作">
-                <MoreHorizontal size={18} />
-              </button>
             </div>
             <div className="library-card-body">
               <div className="material-meta">

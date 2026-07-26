@@ -9,6 +9,7 @@ import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
 import { api } from "./lib/api";
+import { loadProfile } from "./lib/storage";
 import type {
   ArchiveItem,
   Material,
@@ -31,7 +32,7 @@ function App() {
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
   const [userName, setUserName] = useState(
-    () => localStorage.getItem("wenqu-demo-user") || "",
+    () => loadProfile()?.displayName || "",
   );
 
   const persona = useMemo(
@@ -40,10 +41,11 @@ function App() {
   );
 
   useEffect(() => {
-    Promise.all([api.materials(), api.personas()])
-      .then(([materialList, personaList]) => {
+    Promise.all([api.materials(), api.personas(), api.archive()])
+      .then(([materialList, personaList, archiveItems]) => {
         setMaterials(materialList);
         setPersonas(personaList);
+        setArchive(archiveItems);
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "初始化失败。");
@@ -143,6 +145,7 @@ function App() {
           busy={busy}
           uploadStatus={uploadStatus}
           onNavigate={(next) => void navigate(next)}
+          archive={archive}
         />
       )}
       {view === "materials" && (
@@ -153,8 +156,18 @@ function App() {
           onUpload={(file) => void upload(file)}
         />
       )}
-      {view === "insights" && <InsightsView />}
-      {view === "misconceptions" && <MisconceptionsView />}
+      {view === "insights" && (
+        <InsightsView
+          items={archive}
+          onReview={() => materials[0] && void startStudy(materials[0].id)}
+        />
+      )}
+      {view === "misconceptions" && (
+        <MisconceptionsView
+          items={archive}
+          onReview={() => materials[0] && void startStudy(materials[0].id)}
+        />
+      )}
       {view === "study" && material && session && persona && (
         <StudyFlow
           material={material}
@@ -171,7 +184,7 @@ function App() {
         open={authOpen}
         initialMode={authMode}
         onClose={() => setAuthOpen(false)}
-        onSuccess={setUserName}
+        onSuccess={(profile) => setUserName(profile.displayName)}
       />
     </Shell>
   );
