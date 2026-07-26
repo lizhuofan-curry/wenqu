@@ -1,0 +1,55 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;600;700&display=swap");
+
+:root {
+  color-scheme: light;
+  --paper: #faf8f3;
+  --paper-warm: #f3efe6;
+  --paper-deep: #ebe4d6;
+  --card: #fffefa;
+  --ink: #1c2333;
+  --ink-soft: #5a6478;
+  --ink-faint: #9299a6;
+  --indigo: #2f4b7c;
+  --indigo-deep: #223a63;
+  --indigo-soft: #e8edf5;
+  --cinnabar: #c0473d;
+  --cinnabar-soft: #f7e8e4;
+  --gold: #b8912f;
+  --gold-soft: #f4ecd7;
+  --bamboo: #4a7a6a;
+  --bamboo-soft: #e5f0eb;
+  --line: #e4ded0;
+  --line-strong: #d2c8b7;
+  --shadow-card: 0 1px 2px rgb(28 35 51 / 4%), 0 10px 28px rgb(28 35 51 / 7%);
+  --shadow-float: 0 20px 60px rgb(28 35 51 / 14%);
+  --font-serif: "Noto Serif SC", "Songti SC", "SimSun", serif;
+  --font-sans: Inter, "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --radius-card: 14px;
+  --radius-control: 10px;
+  --ease: cubic-bezier(.2, .7, .3, 1);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #16181d;
+  --paper-warm: #1c1f26;
+  --paper-deep: #252933;
+  --card: #1e2129;
+  --ink: #e8e4da;
+  --ink-soft: #aaa59a;
+  --ink-faint: #777a82;
+  --indigo: #8fa8d0;
+  --indigo-deep: #b0c2df;
+  --indigo-soft: #252e3e;
+  --cinnabar: #d4695f;
+  --cinnabar-soft: #3c2627;
+  --gold: #cfa64a;
+  --gold-soft: #342d20;
+  --bamboo: #79a997;
+  --bamboo-soft: #21342f;
+  --line: #2c303b;
+  --line-strong: #3a3f4d;
+  --shadow-card: inset 0 1px 0 rgb(255 255 255 / 4%), 0 12px 32px rgb(0 0 0 / 20%);
+  --shadow-float: 0 24px 70px rgb(0 0 0 / 35%);
+}
