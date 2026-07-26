@@ -77,12 +77,16 @@
 - Vercel 备用地址：<https://wenqu-reading-room.vercel.app>；
 - Sites 历史地址：<https://wenqu-reading-room.z7074836.chatgpt.site>；
 - Sites 项目已设为 `public`，任何获得链接的人都可访问；
-- 生产版本：Sites version 4；
-- 部署源码提交：`6613c2e`；
+- 生产版本：Sites version 5；
+- 部署源码提交：`46c97f3`；
 - 修复部署环境中根构建脚本无法调用 pnpm 的问题；
 - 将 Vite 产物统一输出到根目录 `dist/`；
 - 增加 Sites 静态资源运行入口与单页应用路由回退；
 - GitHub `main` 与 Sites 源码仓库均已推送。
+- GitHub Pages 已更新到功能修复包 `index-CpZzVvT4.js`，部署运行 `30218593171` 成功；
+- Sites v5 部署状态为 `succeeded`，源码提交为 `46c97f3`；
+- 公网 GitHub Pages 重新完成注册、密码切换、SENet 五阶段、诊断和档案保存；
+- 公网验证得到 1 条 `completed` 记录、3 道回答、完整复述，控制台错误为 `0`。
 
 ### 产品与视觉
 
@@ -194,6 +198,7 @@
 ## 当前已知限制
 
 - 当前公开版记录只保存在完成操作的浏览器；换设备、清除网站数据后不会同步；
+- 修复发布前完成的那次手机练习没有进入服务器，也无法从其他设备补取；
 - 注册仍是浏览器本地档案，不是服务端身份认证；
 - DeepSeek 接入代码已完成，但尚未安全配置用户的 `DEEPSEEK_API_KEY`；
 - 服务端仍为本地单用户 SQLite，不具备生产环境多人隔离；
