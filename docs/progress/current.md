@@ -20,6 +20,8 @@
 - `pnpm check` 全部通过：TypeScript、Vite、Ruff 通过，Pytest `4 passed`；
 - 浏览器自动点击验收通过，页面内容完整、无 Vite 错误层、无运行时错误；
 - 首轮手机截图发现学习页返回文字被挤成竖排，已改为移动端返回箭头并复验通过。
+- v.3 已推送到 GitHub 草稿 PR #18；
+- GitHub CI 的 Web 与 API 两项自动审查均已通过。
 
 对应版本记录：`docs/progress/v.3.md`
 
