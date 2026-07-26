@@ -17,6 +17,7 @@
 | `06-home-dark.png` | 今日阅读 · 夜间模式 | 夜间主题与主题持久化 |
 | `07-study-map.png` | SENet 材料地图 | 问题、方法、证据、结论、边界和学习目标 |
 | `08-study-dual-track.png` | SENet 双轨讲解 | 严格轨、陪读轨、原文定位与章节切换 |
+| `09-production-github-pages.png` | GitHub Pages 生产验收 | 真实公网地址加载、导航与 SENet 材料地图 |
 
 ## 交互路径
 

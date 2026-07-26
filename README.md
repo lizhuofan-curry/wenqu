@@ -2,7 +2,7 @@
 
 > 问渠不替你读，而是陪你把知识变成自己的话。
 
-[在线体验问渠](https://wenqu-reading-room.z7074836.chatgpt.site)
+[在线体验问渠](https://lizhuofan-curry.github.io/wenqu/)
 
 [![CI](https://github.com/lizhuofan-curry/zhiyu-study-room/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhuofan-curry/zhiyu-study-room/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-v.1-3975f6)
@@ -46,7 +46,9 @@ v.0 以 CVPR 2018 论文 *Squeeze-and-Excitation Networks* 为首份内置材料
 
 ## 在线演示
 
-公网地址：<https://wenqu-reading-room.z7074836.chatgpt.site>
+推荐访问地址：<https://lizhuofan-curry.github.io/wenqu/>
+
+备用 Vercel 地址：<https://wenqu-reading-room.vercel.app>
 
 在线版默认使用内置演示数据，因此无需启动本地后端或配置 AI 密钥。注册信息只保存在当前浏览器；如需真实材料解析、SQLite 档案和 AI 生成，请按下文运行完整前后端。
 

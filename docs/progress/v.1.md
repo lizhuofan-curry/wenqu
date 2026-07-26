@@ -15,7 +15,8 @@
 - 增加无后端演示数据和公开部署模式；
 - 保留 SENet 五步学习闭环；
 - 保存 8 张真实运行产品原型图；
-- 发布公开演示站点 <https://wenqu-reading-room.z7074836.chatgpt.site>；
+- 发布推荐公开演示站点 <https://lizhuofan-curry.github.io/wenqu/>；
+- 发布 Vercel 备用站点 <https://wenqu-reading-room.vercel.app>；
 - 更新 README 与实时进度文档。
 
 ## 主要文件
@@ -38,6 +39,7 @@
 - Chrome 实际点击导航、主题、注册弹窗和 SENet 前两阶段通过；
 - 原型图均由正式 React 前端生成。
 - Sites 生产版本 4 部署成功，访问模式为公开。
+- GitHub Pages 返回 `200 OK`，真实 Chrome 导航和 SENet 入口验收通过，控制台无错误。
 
 ## 下一步
 

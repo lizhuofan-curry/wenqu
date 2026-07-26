@@ -44,7 +44,9 @@
 
 ### 公网发布
 
-- 生产地址：<https://wenqu-reading-room.z7074836.chatgpt.site>；
+- 推荐生产地址：<https://lizhuofan-curry.github.io/wenqu/>；
+- Vercel 备用地址：<https://wenqu-reading-room.vercel.app>；
+- Sites 历史地址：<https://wenqu-reading-room.z7074836.chatgpt.site>；
 - Sites 项目已设为 `public`，任何获得链接的人都可访问；
 - 生产版本：Sites version 4；
 - 部署源码提交：`6613c2e`；
@@ -97,9 +99,14 @@
 ### 生产部署
 
 - Sites 版本 4：`succeeded`；
-- 生产 URL 已生成，站点访问模式复核为 `public`；
+- Vercel 项目 `wenqu-reading-room`：生产部署 `READY`；
+- GitHub Pages `/wenqu/`：HTTP `200 OK`；
 - 品牌 SVG 图标已经补齐；
-- 当前自动化执行环境访问 `chatgpt.site` 被 Cloudflare Bot Management 返回 403，发生在应用运行入口之前；因此无法在该环境完成生产页面的第二次截图，但本地同一提交已通过完整浏览器点击验收。
+- 用户与自动化执行环境访问 `chatgpt.site` 均被 Cloudflare Bot Management 返回 403，发生在应用运行入口之前；
+- 当前网络将 `vercel.app` 解析到错误地址，Vercel 后台虽为 `READY`，但不作为中国网络的首选入口；
+- GitHub Pages 在同一网络中可达，Chrome 已完成“资料库 → 学习洞察 → 错因图谱 → 注册弹窗 → SENet 材料地图”真实点击验收；
+- 生产浏览器控制台错误：`0`；
+- 生产验收截图：`docs/product/prototypes/wenqu-v1/09-production-github-pages.png`。
 
 ### 自动检查
 

@@ -1,0 +1,15 @@
+.git
+.github
+.agents
+.codex
+.vercel
+.env
+.env.*
+node_modules
+dist
+services
+resources
+docs
+prototypes
+tmp
+*.log
