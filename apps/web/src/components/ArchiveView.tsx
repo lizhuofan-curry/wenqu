@@ -1,6 +1,7 @@
 import { Archive, ArrowRight, Brain, CalendarDays, Download } from "lucide-react";
 import type { ArchiveItem } from "../lib/types";
 import { exportLocalData } from "../lib/storage";
+import { cloudEnabled } from "../lib/cloud";
 
 export function ArchiveView({ items }: { items: ArchiveItem[] }) {
   return (
@@ -13,7 +14,7 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
         <div className="archive-actions">
           <button className="primary-button" onClick={exportLocalData} disabled={!items.length}>
             <Download size={17} />
-            导出测试数据
+            {cloudEnabled ? "导出本机备份" : "导出测试数据"}
           </button>
           <div className="archive-count">
             <Archive size={20} />

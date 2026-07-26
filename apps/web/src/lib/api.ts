@@ -17,6 +17,7 @@ import {
   saveActiveSession,
   saveStudyRecord,
 } from "./storage";
+import { loadCloudArchive, saveRecordToCloud } from "./cloud";
 
 type ApiErrorPayload = {
   detail?: string;
@@ -72,7 +73,7 @@ export const api = {
   archive: () =>
     withDemo(
       () => request<ArchiveItem[]>("/api/archive"),
-      () => loadLocalArchive(),
+      async () => (await loadCloudArchive()) || loadLocalArchive(),
     ),
   createSession: (materialId: string, personaId: string) =>
     withDemo(
@@ -100,13 +101,13 @@ export const api = {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ answers, retelling }),
         }),
-      () => {
+      async () => {
         const base = latestDemoSession || createDemoSession("huangfeng");
         latestDemoSession = evaluateDemoSession(base);
         const persona =
           demoPersonas.find((item) => item.id === latestDemoSession?.persona_id) ||
           demoPersonas[0];
-        saveStudyRecord({
+        const record = {
           session: latestDemoSession,
           archive: {
             session_id: latestDemoSession.id,
@@ -122,7 +123,9 @@ export const api = {
           answers,
           retelling,
           savedAt: new Date().toISOString(),
-        });
+        };
+        saveStudyRecord(record);
+        await saveRecordToCloud(record);
         return latestDemoSession;
       },
     ),

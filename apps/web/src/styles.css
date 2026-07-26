@@ -1291,6 +1291,21 @@ input:focus-visible {
   color: var(--muted);
 }
 
+.auth-success .primary-button {
+  margin-top: 20px;
+}
+
+.auth-error {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(218, 74, 74, 0.28);
+  border-radius: 10px;
+  background: rgba(218, 74, 74, 0.08);
+  color: #c94b4b;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .study-title h1,
 .stage-intro h2,
 .question-card h3,

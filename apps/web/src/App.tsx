@@ -10,6 +10,12 @@ import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
 import { api } from "./lib/api";
 import { loadProfile } from "./lib/storage";
+import {
+  cloudEnabled,
+  getCloudProfile,
+  logoutCloudAccount,
+  watchCloudAuth,
+} from "./lib/cloud";
 import type {
   ArchiveItem,
   Material,
@@ -50,6 +56,26 @@ function App() {
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "初始化失败。");
       });
+  }, []);
+
+  useEffect(() => {
+    if (!cloudEnabled) return;
+    void getCloudProfile().then((profile) => {
+      setUserName(profile?.displayName || "");
+      if (profile) {
+        void api.archive().then(setArchive).catch((reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
+        });
+      } else {
+        setArchive([]);
+      }
+    });
+    return watchCloudAuth((profile) => {
+      setUserName(profile?.displayName || "");
+      void api.archive().then(setArchive).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
+      });
+    });
   }, []);
 
   async function startStudy(materialId: string) {
@@ -126,6 +152,17 @@ function App() {
       onAuth={(mode) => {
         setAuthMode(mode);
         setAuthOpen(true);
+      }}
+      cloudEnabled={cloudEnabled}
+      onSignOut={() => {
+        void logoutCloudAccount()
+          .then(() => {
+            setUserName("");
+            setArchive([]);
+          })
+          .catch((reason: unknown) => {
+            setError(reason instanceof Error ? reason.message : "退出失败。");
+          });
       }}
     >
       {error && (
