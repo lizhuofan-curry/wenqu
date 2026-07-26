@@ -85,6 +85,7 @@
 - GitHub `main` 与 Sites 源码仓库均已推送。
 - GitHub Pages 已更新到功能修复包 `index-CpZzVvT4.js`，部署运行 `30218593171` 成功；
 - Sites v5 部署状态为 `succeeded`，源码提交为 `46c97f3`；
+- Vercel 生产部署 `dpl_E4gyYubir1dZj7PTvzUFMAhRANn2` 状态为 `READY`，别名仍为 <https://wenqu-reading-room.vercel.app>；
 - 公网 GitHub Pages 重新完成注册、密码切换、SENet 五阶段、诊断和档案保存；
 - 公网验证得到 1 条 `completed` 记录、3 道回答、完整复述，控制台错误为 `0`。
 
@@ -194,6 +195,7 @@
 - Web typecheck and build：成功；
 - API lint and tests：成功；
 - Dependabot 的 npm、pip 和 GitHub Actions 检查已启用。
+- 本轮功能合并 CI `30218940398`：Web 与 API 两个任务均成功。
 
 ## 当前已知限制
 
