@@ -129,7 +129,7 @@ class EvaluationResult(BaseModel):
     misconception_tags: list[str]
     review_sources: list[SourceRef]
     next_step: str
-    evaluator: Literal["rules", "openai"]
+    evaluator: Literal["rules", "openai", "deepseek"]
 
 
 class ArchiveItem(BaseModel):

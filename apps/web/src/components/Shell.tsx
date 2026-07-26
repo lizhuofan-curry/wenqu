@@ -115,8 +115,8 @@ export function Shell({
         <div className="sidebar-footer">
           <span className="status-dot" />
           <div>
-            <strong>演示模式可用</strong>
-            <small>无需配置 API</small>
+            <strong>本地记录已开启</strong>
+            <small>完成后可导出数据</small>
           </div>
           <em>v.1</em>
         </div>

@@ -1,6 +1,15 @@
 import { ArrowRight, BookOpenCheck, GitBranch, Lightbulb, RotateCcw } from "lucide-react";
+import type { ArchiveItem } from "../lib/types";
 
-export function MisconceptionsView() {
+export function MisconceptionsView({
+  items,
+  onReview,
+}: {
+  items: ArchiveItem[];
+  onReview: () => void;
+}) {
+  const tags = items.flatMap((item) => item.misconception_tags);
+  const topTag = tags[0] || "暂无错因";
   return (
     <div className="standard-page page-enter">
       <header className="page-header">
@@ -9,7 +18,7 @@ export function MisconceptionsView() {
           <h1>错因图谱</h1>
           <p>系统按概念关系整理误解，而不是只记录一道做错的题。</p>
         </div>
-        <span className="date-chip warning">1 个待巩固</span>
+        <span className="date-chip warning">{tags.length} 个待巩固</span>
       </header>
       <div className="misconception-layout">
         <section className="panel graph-panel">
@@ -38,8 +47,12 @@ export function MisconceptionsView() {
         <aside className="panel weak-detail">
           <span className="weak-icon"><Lightbulb size={22} /></span>
           <p className="eyebrow">当前误解</p>
-          <h2>残差分支位置</h2>
-          <p>你曾把 SE 放在 residual 与 identity 相加之后。论文 Figure 3 表明，SE 先缩放 residual 分支，再执行相加。</p>
+          <h2>{topTag}</h2>
+          <p>
+            {tags.length
+              ? "这条错因来自你已完成的学习诊断。回到原文证据并重新复述，可以确认误解是否已经修正。"
+              : "完成一次答题和复述后，这里才会显示真实错因，不再预置演示结论。"}
+          </p>
           <div className="formula-compare">
             <span className="wrong">SE(F(x) + x)</span>
             <ArrowRight size={16} />
@@ -49,7 +62,7 @@ export function MisconceptionsView() {
             <BookOpenCheck size={17} />
             <span><strong>证据位置</strong>PDF 第 4 页 · Figure 3</span>
           </div>
-          <button className="primary-button wide">
+          <button className="primary-button wide" onClick={onReview}>
             <RotateCcw size={17} />
             开始 8 分钟巩固
           </button>

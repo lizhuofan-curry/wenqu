@@ -14,7 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useRef } from "react";
-import type { MaterialSummary, Persona } from "../lib/types";
+import type { ArchiveItem, MaterialSummary, Persona } from "../lib/types";
 
 type DashboardProps = {
   materials: MaterialSummary[];
@@ -26,6 +26,7 @@ type DashboardProps = {
   busy: boolean;
   uploadStatus: string;
   onNavigate: (view: "materials" | "insights" | "misconceptions") => void;
+  archive: ArchiveItem[];
 };
 
 export function Dashboard({
@@ -38,8 +39,12 @@ export function Dashboard({
   busy,
   uploadStatus,
   onNavigate,
+  archive,
 }: DashboardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const averageMastery = archive.length
+    ? Math.round(archive.reduce((sum, item) => sum + item.mastery, 0) / archive.length)
+    : 0;
 
   return (
     <div className="dashboard page-enter">
@@ -51,9 +56,9 @@ export function Dashboard({
         </div>
         <div className="streak">
           <Flame size={17} />
-          <span>连续陪读</span>
-          <strong>6</strong>
-          <small>天</small>
+          <span>已完成陪读</span>
+          <strong>{archive.length}</strong>
+          <small>次</small>
         </div>
       </header>
 
@@ -98,12 +103,20 @@ export function Dashboard({
         </button>
         <button onClick={() => onNavigate("insights")}>
           <span className="quick-icon violet"><BarChart3 size={21} /></span>
-          <span><strong>学习洞察</strong><small>本周掌握度提升 6%</small></span>
+          <span>
+            <strong>学习洞察</strong>
+            <small>{archive.length ? `平均掌握度 ${averageMastery}%` : "完成一次学习后生成"}</small>
+          </span>
           <ChevronRight size={17} />
         </button>
         <button onClick={() => onNavigate("misconceptions")}>
           <span className="quick-icon coral"><BrainCircuit size={21} /></span>
-          <span><strong>错因图谱</strong><small>1 个概念等待巩固</small></span>
+          <span>
+            <strong>错因图谱</strong>
+            <small>
+              {archive.flatMap((item) => item.misconception_tags).length} 个错因记录
+            </small>
+          </span>
           <ChevronRight size={17} />
         </button>
       </section>

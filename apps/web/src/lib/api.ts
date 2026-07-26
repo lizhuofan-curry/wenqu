@@ -7,11 +7,16 @@ import type {
 } from "./types";
 import {
   createDemoSession,
-  demoArchive,
   demoMaterial,
   demoPersonas,
   evaluateDemoSession,
 } from "./demo";
+import {
+  loadActiveSession,
+  loadLocalArchive,
+  saveActiveSession,
+  saveStudyRecord,
+} from "./storage";
 
 type ApiErrorPayload = {
   detail?: string;
@@ -36,7 +41,7 @@ let useDemo =
   import.meta.env.VITE_DEMO_MODE === "true" ||
   (import.meta.env.PROD && import.meta.env.VITE_DEMO_MODE !== "false") ||
   window.location.protocol === "file:";
-let latestDemoSession: Session | undefined;
+let latestDemoSession: Session | undefined = loadActiveSession();
 
 async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T>) {
   if (useDemo) return fallback();
@@ -67,7 +72,7 @@ export const api = {
   archive: () =>
     withDemo(
       () => request<ArchiveItem[]>("/api/archive"),
-      () => demoArchive(latestDemoSession),
+      () => loadLocalArchive(),
     ),
   createSession: (materialId: string, personaId: string) =>
     withDemo(
@@ -79,6 +84,7 @@ export const api = {
         }),
       () => {
         latestDemoSession = createDemoSession(personaId);
+        saveActiveSession(latestDemoSession);
         return latestDemoSession;
       },
     ),
@@ -97,6 +103,26 @@ export const api = {
       () => {
         const base = latestDemoSession || createDemoSession("huangfeng");
         latestDemoSession = evaluateDemoSession(base);
+        const persona =
+          demoPersonas.find((item) => item.id === latestDemoSession?.persona_id) ||
+          demoPersonas[0];
+        saveStudyRecord({
+          session: latestDemoSession,
+          archive: {
+            session_id: latestDemoSession.id,
+            material_id: latestDemoSession.material_id,
+            material_title: demoMaterial.title,
+            persona_name: persona.name,
+            completed_at: latestDemoSession.completed_at || new Date().toISOString(),
+            mastery: latestDemoSession.result?.mastery || 0,
+            headline: latestDemoSession.result?.headline || "本次学习已完成",
+            misconception_tags: latestDemoSession.result?.misconception_tags || [],
+            retelling,
+          },
+          answers,
+          retelling,
+          savedAt: new Date().toISOString(),
+        });
         return latestDemoSession;
       },
     ),

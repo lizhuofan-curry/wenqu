@@ -89,8 +89,24 @@ services/api/.venv/Scripts/python.exe -m pip install -r services/api/requirement
 Copy-Item .env.example .env.local
 ```
 
-在 `.env.local` 中设置 `OPENAI_API_KEY`。密钥只由后端读取；内置 SENet 学习流程不需要密钥。
-上传自定义材料还需要对应 OpenAI API 项目拥有可用额度。
+推荐使用 DeepSeek：
+
+```dotenv
+AI_PROVIDER=deepseek
+DEEPSEEK_API_KEY=
+DEEPSEEK_MODEL=deepseek-v4-flash
+```
+
+也可以把 `AI_PROVIDER` 改为 `openai` 并设置 `OPENAI_API_KEY`。密钥只由后端读取，
+不会进入浏览器或 Git；内置 SENet 学习流程不需要模型密钥。
+
+### 浏览器数据说明
+
+- 当前公开版把昵称、邮箱、答案、复述和诊断保存在当前浏览器的 `localStorage`；
+- 密码不会保存，也不会提交到服务器；
+- 完成学习后可在“阅读档案”下载 JSON 测试数据；
+- 清理浏览器网站数据或更换设备后，本地记录不会自动同步；
+- 真正的多设备账户和集中数据分析需要接入生产数据库与身份认证。
 
 ### 4. 启动
 
@@ -116,7 +132,7 @@ pnpm dev
 pnpm check
 ```
 
-CI 不调用 OpenAI API，也不需要仓库密钥。
+CI 不调用 OpenAI 或 DeepSeek API，也不需要仓库密钥。
 
 ## 产品与开发文档
 
@@ -126,6 +142,7 @@ CI 不调用 OpenAI API，也不需要仓库密钥。
 - [v.0 项目进度](docs/progress/v.0.md)
 - [当前进展与下一步](docs/progress/current.md)
 - [内容生产自动化工作流](docs/workflow/content-workflow.md)
+- [DeepSeek 接入与数据边界](docs/deployment/deepseek.md)
 
 ## 路线图
 
@@ -141,4 +158,5 @@ CI 不调用 OpenAI API，也不需要仓库密钥。
 
 ---
 
-知隅仍处于 v.0。现在最重要的不是“生成更多内容”，而是验证学习者能否真正完成阅读、答题、复述，并认可系统指出的误解。
+问渠仍处于 v.1 验证阶段。现在最重要的是先让学习记录真实、可导出、可核对，
+再完成服务端账号与数据库，使不同设备的数据能够汇总。

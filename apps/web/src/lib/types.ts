@@ -78,7 +78,7 @@ export type EvaluationResult = {
   misconception_tags: string[];
   review_sources: SourceRef[];
   next_step: string;
-  evaluator: "rules" | "openai";
+  evaluator: "rules" | "openai" | "deepseek";
 };
 
 export type Session = {
@@ -102,4 +102,3 @@ export type ArchiveItem = {
   misconception_tags: string[];
   retelling: string;
 };
-

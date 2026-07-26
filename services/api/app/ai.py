@@ -5,6 +5,7 @@ from pathlib import Path
 
 import pymupdf
 from openai import APIConnectionError, AuthenticationError, BadRequestError, OpenAI, RateLimitError
+from pydantic import BaseModel, ValidationError
 
 from .config import settings
 from .models import EvaluationRequest, EvaluationResult, GeneratedMaterial, MaterialInternal
@@ -14,21 +15,28 @@ class AIServiceError(RuntimeError):
     pass
 
 
-def _as_service_error(exc: Exception) -> AIServiceError:
+def _provider_label(provider: str) -> str:
+    return "DeepSeek" if provider == "deepseek" else "OpenAI"
+
+
+def _as_service_error(exc: Exception, provider: str) -> AIServiceError:
+    label = _provider_label(provider)
     if isinstance(exc, AuthenticationError):
-        return AIServiceError("OpenAI API 密钥无效或已失效，请检查后端环境配置。")
+        return AIServiceError(f"{label} API 密钥无效或已失效，请检查后端环境配置。")
     if isinstance(exc, RateLimitError):
         error_code = getattr(exc, "code", None)
         if error_code == "insufficient_quota":
             return AIServiceError(
-                "OpenAI 项目当前没有可用 API 额度。补充余额或提高项目限额后重试；"
+                f"{label} 项目当前没有可用 API 额度。补充余额或提高项目限额后重试；"
                 "内置 SENet 陪读不受影响。"
             )
-        return AIServiceError("OpenAI 请求过于频繁，请稍后重试。")
+        return AIServiceError(f"{label} 请求过于频繁，请稍后重试。")
     if isinstance(exc, APIConnectionError):
-        return AIServiceError("暂时无法连接 OpenAI，请检查网络后重试。")
+        return AIServiceError(f"暂时无法连接 {label}，请检查网络后重试。")
     if isinstance(exc, BadRequestError):
-        return AIServiceError("OpenAI 拒绝了材料生成请求，请检查模型配置或输入格式。")
+        return AIServiceError(f"{label} 拒绝了请求，请检查模型配置或输入格式。")
+    if isinstance(exc, (ValidationError, json.JSONDecodeError)):
+        return AIServiceError(f"{label} 返回的结构不完整，请重试。")
     return AIServiceError("AI 服务暂时不可用，请稍后重试。")
 
 
@@ -59,10 +67,72 @@ def extract_source(filename: str, content: bytes) -> tuple[str, str]:
     raise ValueError("只支持 PDF、.md 和 .markdown 文件。")
 
 
-def _client() -> OpenAI:
-    if not settings.openai_api_key:
-        raise AIServiceError("后端未配置 OPENAI_API_KEY。")
-    return OpenAI(api_key=settings.openai_api_key)
+def _provider() -> tuple[str, OpenAI, str]:
+    if settings.ai_provider == "deepseek":
+        if not settings.deepseek_api_key:
+            raise AIServiceError("后端未配置 DEEPSEEK_API_KEY。")
+        return (
+            "deepseek",
+            OpenAI(
+                api_key=settings.deepseek_api_key,
+                base_url=settings.deepseek_base_url,
+            ),
+            settings.deepseek_model,
+        )
+    if settings.ai_provider == "openai":
+        if not settings.openai_api_key:
+            raise AIServiceError("后端未配置 OPENAI_API_KEY。")
+        return "openai", OpenAI(api_key=settings.openai_api_key), settings.openai_model
+    raise AIServiceError("AI_PROVIDER 只支持 deepseek 或 openai。")
+
+
+def _structured_completion[StructuredModel: BaseModel](
+    model_type: type[StructuredModel],
+    *,
+    instructions: str,
+    prompt: str,
+    max_tokens: int,
+) -> tuple[StructuredModel, str]:
+    provider, client, model = _provider()
+    try:
+        if provider == "openai":
+            response = client.responses.parse(
+                model=model,
+                reasoning={"effort": "low"},
+                instructions=instructions,
+                input=prompt,
+                text_format=model_type,
+                store=False,
+            )
+            if response.output_parsed is None:
+                raise AIServiceError("OpenAI 没有返回可解析的结构化结果。")
+            return response.output_parsed, provider
+
+        schema = json.dumps(model_type.model_json_schema(), ensure_ascii=False)
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        f"{instructions}\n"
+                        "只输出一个合法 JSON 对象，不要使用 Markdown 代码块。"
+                        f"\n必须符合以下 JSON Schema：\n{schema}"
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=max_tokens,
+        )
+        content = response.choices[0].message.content
+        if not content:
+            raise AIServiceError("DeepSeek 没有返回可解析的结构化结果。")
+        return model_type.model_validate_json(content), provider
+    except AIServiceError:
+        raise
+    except Exception as exc:
+        raise _as_service_error(exc, provider) from exc
 
 
 def generate_material(filename: str, source_text: str) -> GeneratedMaterial:
@@ -82,23 +152,13 @@ def generate_material(filename: str, source_text: str) -> GeneratedMaterial:
 材料：
 {source_text}
 """.strip()
-    try:
-        response = _client().responses.parse(
-            model=settings.openai_model,
-            reasoning={"effort": "low"},
-            instructions="只返回符合给定 JSON Schema 的内容。",
-            input=prompt,
-            text_format=GeneratedMaterial,
-            safety_identifier="study-room-material-generator-v0",
-            store=False,
-        )
-        if response.output_parsed is None:
-            raise AIServiceError("模型没有返回可解析的学习材料。")
-        return response.output_parsed
-    except AIServiceError:
-        raise
-    except Exception as exc:
-        raise _as_service_error(exc) from exc
+    result, _ = _structured_completion(
+        GeneratedMaterial,
+        instructions="生成严格基于原材料的学习包，并返回符合 JSON Schema 的 JSON。",
+        prompt=prompt,
+        max_tokens=8000,
+    )
+    return result
 
 
 def evaluate_with_ai(
@@ -123,23 +183,14 @@ def evaluate_with_ai(
         "answers": [answer.model_dump() for answer in request.answers],
         "retelling": request.retelling,
     }
-    try:
-        response = _client().responses.parse(
-            model=settings.openai_model,
-            reasoning={"effort": "low"},
-            instructions=(
-                "你是严格的学习诊断器。按评分依据逐项评分。"
-                "反馈必须引用给定 source，不得编造材料内容。evaluator 必须为 openai。"
-            ),
-            input=json.dumps(payload, ensure_ascii=False),
-            text_format=EvaluationResult,
-            safety_identifier=f"study-session-{session_id[:12]}",
-            store=False,
-        )
-        if response.output_parsed is None:
-            raise AIServiceError("模型没有返回可解析的学习诊断。")
-        return response.output_parsed
-    except AIServiceError:
-        raise
-    except Exception as exc:
-        raise _as_service_error(exc) from exc
+    result, provider = _structured_completion(
+        EvaluationResult,
+        instructions=(
+            "你是严格的学习诊断器。按评分依据逐项评分。"
+            "反馈必须引用给定 source，不得编造材料内容。"
+            "返回 JSON，evaluator 暂时填写 openai，服务端会按实际提供商校正。"
+        ),
+        prompt=json.dumps(payload, ensure_ascii=False),
+        max_tokens=6000,
+    )
+    return result.model_copy(update={"evaluator": provider})

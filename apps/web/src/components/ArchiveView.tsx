@@ -1,5 +1,6 @@
-import { Archive, ArrowRight, Brain, CalendarDays } from "lucide-react";
+import { Archive, ArrowRight, Brain, CalendarDays, Download } from "lucide-react";
 import type { ArchiveItem } from "../lib/types";
+import { exportLocalData } from "../lib/storage";
 
 export function ArchiveView({ items }: { items: ArchiveItem[] }) {
   return (
@@ -9,10 +10,16 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
           <p className="eyebrow">你真正留下来的东西</p>
           <h1>阅读档案</h1>
         </div>
-        <div className="archive-count">
-          <Archive size={20} />
-          <strong>{items.length}</strong>
-          <span>次完整学习</span>
+        <div className="archive-actions">
+          <button className="primary-button" onClick={exportLocalData} disabled={!items.length}>
+            <Download size={17} />
+            导出测试数据
+          </button>
+          <div className="archive-count">
+            <Archive size={20} />
+            <strong>{items.length}</strong>
+            <span>次完整学习</span>
+          </div>
         </div>
       </header>
 
@@ -58,4 +65,3 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
     </div>
   );
 }
-

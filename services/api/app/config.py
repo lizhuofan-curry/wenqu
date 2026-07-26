@@ -14,8 +14,12 @@ load_dotenv(PROJECT_ROOT / ".env.local")
 class Settings:
     app_name: str = "个性化陪读阅读室 API"
     app_env: str = os.getenv("APP_ENV", "development")
+    ai_provider: str = os.getenv("AI_PROVIDER", "openai").lower()
     openai_api_key: str | None = os.getenv("OPENAI_API_KEY")
     openai_model: str = os.getenv("OPENAI_MODEL", "gpt-5.6-luna")
+    deepseek_api_key: str | None = os.getenv("DEEPSEEK_API_KEY")
+    deepseek_model: str = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+    deepseek_base_url: str = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
     database_path: Path = Path(
         os.getenv(
             "DATABASE_PATH",
