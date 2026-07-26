@@ -57,6 +57,25 @@ def main() -> None:
                 """
             )
             trigger_exists = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                select
+                  count(*)::integer,
+                  count(*) filter (where email_confirmed_at is not null)::integer
+                from auth.users
+                """
+            )
+            total_users, confirmed_users = cursor.fetchone()
+            cursor.execute(
+                """
+                select email_confirmed_at is not null
+                from auth.users
+                order by created_at desc
+                limit 1
+                """
+            )
+            latest_user = cursor.fetchone()
+            latest_user_confirmed = bool(latest_user and latest_user[0])
 
     expected_tables = [("profiles", True), ("study_records", True)]
     expected_policies = {
@@ -85,6 +104,11 @@ def main() -> None:
     print(
         "Supabase 验证通过：Auth 可用，2 张表已启用 RLS，"
         "6 条隔离策略和建档触发器均存在。"
+    )
+    print(f"账号统计：共 {total_users} 个，已确认邮箱 {confirmed_users} 个。")
+    print(
+        "最新注册账号状态："
+        f"{'邮箱已确认' if latest_user_confirmed else '等待邮箱确认'}。"
     )
 
 
