@@ -1,76 +1,172 @@
 import {
   Archive,
+  BarChart3,
+  Bell,
   BookOpen,
+  BrainCircuit,
   Compass,
-  MessageCircleQuestion,
-  Settings2,
-  Sparkles,
+  LogIn,
+  Menu,
+  Moon,
+  Search,
+  Sun,
+  UserPlus,
+  X,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 
-type View = "home" | "study" | "archive";
+export type View =
+  | "home"
+  | "study"
+  | "materials"
+  | "insights"
+  | "misconceptions"
+  | "archive";
 
 type ShellProps = {
   children: ReactNode;
   view: View;
   onNavigate: (view: View) => void;
   studyEnabled: boolean;
+  userName: string;
+  onAuth: (mode: "login" | "register") => void;
 };
 
-export function Shell({ children, view, onNavigate, studyEnabled }: ShellProps) {
+const items: Array<{
+  id: Exclude<View, "study">;
+  label: string;
+  icon: typeof Compass;
+}> = [
+  { id: "home", label: "今日阅读", icon: Compass },
+  { id: "materials", label: "资料库", icon: BookOpen },
+  { id: "insights", label: "学习洞察", icon: BarChart3 },
+  { id: "misconceptions", label: "错因图谱", icon: BrainCircuit },
+  { id: "archive", label: "阅读档案", icon: Archive },
+];
+
+export function Shell({
+  children,
+  view,
+  onNavigate,
+  studyEnabled,
+  userName,
+  onAuth,
+}: ShellProps) {
+  const [dark, setDark] = useState(() => localStorage.getItem("wenqu-theme") === "dark");
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = dark ? "dark" : "light";
+    localStorage.setItem("wenqu-theme", dark ? "dark" : "light");
+  }, [dark]);
+
+  function go(next: View) {
+    onNavigate(next);
+    setMobileOpen(false);
+  }
+
   return (
     <div className="app-shell">
-      <aside className="sidebar">
-        <button className="brand" onClick={() => onNavigate("home")}>
-          <span className="brand-mark">知</span>
+      <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
+        <button className="mobile-close" onClick={() => setMobileOpen(false)}>
+          <X size={20} />
+        </button>
+        <button className="brand" onClick={() => go("home")}>
+          <span className="brand-mark">问</span>
           <span>
-            <strong>知隅</strong>
-            <small>陪读阅读室</small>
+            <strong>问渠</strong>
+            <small>个性化陪读室</small>
           </span>
         </button>
 
+        <div className="nav-label">学习空间</div>
         <nav className="main-nav" aria-label="主导航">
-          <button
-            className={view === "home" ? "active" : ""}
-            onClick={() => onNavigate("home")}
-          >
-            <Compass size={18} />
-            阅读室
-          </button>
-          <button
-            className={view === "study" ? "active" : ""}
-            onClick={() => studyEnabled && onNavigate("study")}
-            disabled={!studyEnabled}
-          >
-            <BookOpen size={18} />
-            正在陪读
-          </button>
-          <button
-            className={view === "archive" ? "active" : ""}
-            onClick={() => onNavigate("archive")}
-          >
-            <Archive size={18} />
-            阅读档案
-          </button>
+          {items.map((item) => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                className={view === item.id ? "active" : ""}
+                onClick={() => go(item.id)}
+              >
+                <Icon size={18} />
+                {item.label}
+              </button>
+            );
+          })}
+          {studyEnabled && (
+            <button
+              className={view === "study" ? "active" : ""}
+              onClick={() => go("study")}
+            >
+              <span className="live-dot" />
+              正在陪读
+            </button>
+          )}
         </nav>
 
-        <div className="sidebar-note">
-          <Sparkles size={18} />
-          <p>AI 不替你学习，它负责发现你以为自己懂了的地方。</p>
+        <div className="source-card">
+          <span>问渠 · 取义</span>
+          <p>问渠那得清如许，为有源头活水来。</p>
+          <small>—— 朱熹《观书有感》</small>
         </div>
 
         <div className="sidebar-footer">
-          <button aria-label="帮助">
-            <MessageCircleQuestion size={18} />
-          </button>
-          <button aria-label="设置">
-            <Settings2 size={18} />
-          </button>
-          <span>v.0</span>
+          <span className="status-dot" />
+          <div>
+            <strong>演示模式可用</strong>
+            <small>无需配置 API</small>
+          </div>
+          <em>v.1</em>
         </div>
       </aside>
-      <main className="main-content">{children}</main>
+
+      <div className="app-body">
+        <header className="global-topbar">
+          <button className="mobile-menu" onClick={() => setMobileOpen(true)}>
+            <Menu size={20} />
+          </button>
+          <div className="global-search">
+            <Search size={17} />
+            <input placeholder="搜索资料、笔记或错因…" />
+            <kbd>⌘ K</kbd>
+          </div>
+          <div className="topbar-actions">
+            <button
+              className="icon-button"
+              onClick={() => setDark((value) => !value)}
+              aria-label={dark ? "切换到白天模式" : "切换到夜间模式"}
+              title={dark ? "白天模式" : "夜间模式"}
+            >
+              {dark ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+            <button className="icon-button" aria-label="通知">
+              <Bell size={18} />
+              <span className="notice-dot" />
+            </button>
+            {userName ? (
+              <button className="user-chip">
+                <span>{userName.slice(0, 1)}</span>
+                {userName}
+              </button>
+            ) : (
+              <>
+                <button className="login-button" onClick={() => onAuth("login")}>
+                  <LogIn size={16} />
+                  登录
+                </button>
+                <button className="register-button" onClick={() => onAuth("register")}>
+                  <UserPlus size={16} />
+                  免费注册
+                </button>
+              </>
+            )}
+          </div>
+        </header>
+        <main className="main-content">{children}</main>
+      </div>
+      {mobileOpen && <button className="mobile-overlay" onClick={() => setMobileOpen(false)} />}
     </div>
   );
 }
-

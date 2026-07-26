@@ -6,6 +6,12 @@ import {
   FileText,
   LoaderCircle,
   UploadCloud,
+  BarChart3,
+  BrainCircuit,
+  ChevronRight,
+  Flame,
+  Library,
+  Sparkles,
 } from "lucide-react";
 import { useRef } from "react";
 import type { MaterialSummary, Persona } from "../lib/types";
@@ -19,6 +25,7 @@ type DashboardProps = {
   onUpload: (file: File) => void;
   busy: boolean;
   uploadStatus: string;
+  onNavigate: (view: "materials" | "insights" | "misconceptions") => void;
 };
 
 export function Dashboard({
@@ -30,6 +37,7 @@ export function Dashboard({
   onUpload,
   busy,
   uploadStatus,
+  onNavigate,
 }: DashboardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -37,23 +45,25 @@ export function Dashboard({
     <div className="dashboard page-enter">
       <header className="topbar">
         <div>
-          <p className="eyebrow">2026 · 夏日阅读计划</p>
-          <h1>晚上好，今天想读懂什么？</h1>
+          <p className="eyebrow">2026 · 夏日求知计划</p>
+          <h1>晚上好，今天想真正读懂什么？</h1>
+          <p className="topbar-subtitle">问渠不替你读，而是陪你把知识变成自己的话。</p>
         </div>
         <div className="streak">
+          <Flame size={17} />
           <span>连续陪读</span>
-          <strong>1</strong>
+          <strong>6</strong>
           <small>天</small>
         </div>
       </header>
 
       <section className="hero-panel">
         <div className="hero-copy">
-          <span className="hero-kicker">不只是总结</span>
+          <span className="hero-kicker"><Sparkles size={14} /> 今日继续</span>
           <h2>
-            把论文读懂，
+            从“看过”到“会讲”，
             <br />
-            再用自己的话讲出来。
+            只差一次主动回忆。
           </h2>
           <p>
             原文证据、双轨讲解、主动回忆和错因档案，陪你走完整个学习闭环。
@@ -63,7 +73,7 @@ export function Dashboard({
             onClick={() => materials[0] && onStart(materials[0].id)}
             disabled={busy || materials.length === 0}
           >
-            继续 SENet 陪读
+            继续 SENet · 约 18 分钟
             <ArrowRight size={18} />
           </button>
         </div>
@@ -80,12 +90,30 @@ export function Dashboard({
         </div>
       </section>
 
+      <section className="quick-grid">
+        <button onClick={() => onNavigate("materials")}>
+          <span className="quick-icon blue"><Library size={21} /></span>
+          <span><strong>资料库</strong><small>{materials.length} 份可学习材料</small></span>
+          <ChevronRight size={17} />
+        </button>
+        <button onClick={() => onNavigate("insights")}>
+          <span className="quick-icon violet"><BarChart3 size={21} /></span>
+          <span><strong>学习洞察</strong><small>本周掌握度提升 6%</small></span>
+          <ChevronRight size={17} />
+        </button>
+        <button onClick={() => onNavigate("misconceptions")}>
+          <span className="quick-icon coral"><BrainCircuit size={21} /></span>
+          <span><strong>错因图谱</strong><small>1 个概念等待巩固</small></span>
+          <ChevronRight size={17} />
+        </button>
+      </section>
+
       <div className="dashboard-grid">
         <section className="panel upload-panel">
           <div className="section-heading">
             <div>
               <p className="eyebrow">新材料</p>
-              <h3>把难读的资料交给陪读室</h3>
+              <h3>把难读的资料变成学习路径</h3>
             </div>
             <UploadCloud size={22} />
           </div>
@@ -178,4 +206,3 @@ export function Dashboard({
     </div>
   );
 }
-

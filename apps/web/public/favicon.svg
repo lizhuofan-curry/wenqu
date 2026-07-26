@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="blue" x1="8" y1="6" x2="55" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5a94ff"/>
+      <stop offset="1" stop-color="#245de0"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="url(#blue)"/>
+  <text x="32" y="43" text-anchor="middle" font-size="34" font-family="KaiTi, STKaiti, serif" font-weight="700" fill="white">问</text>
+</svg>
