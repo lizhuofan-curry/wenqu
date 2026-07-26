@@ -18,6 +18,10 @@
 - 为两张表启用 Row Level Security，用户只能访问自己的数据；
 - 增加 Supabase 部署、回调地址、安全边界和跨设备验收文档；
 - 保持无 Supabase 环境变量时的本地演示回退。
+- 已通过 Vercel Marketplace 创建并连接 `supabase-aureolin-button`；
+- 已在生产数据库执行首个用户隔离迁移；
+- 已部署到 `https://wenqu-reading-room.vercel.app`；
+- 已创建 GitHub 草稿 PR #18，并通过前后端 CI。
 
 ## 验证
 
@@ -27,24 +31,24 @@
 - Pytest：4 passed；
 - 无云端变量构建回退：通过；
 - Vercel 项目关联：已确认；
-- Vercel 当前 Marketplace 资源：0；
-- Supabase 安装流程：Vercel Marketplace 最终用户附加条款已由项目所有者明确授权并确认；
-- Supabase 隐私政策已由项目所有者明确授权并确认；
-- 安装随后要求单独接受 Supabase 服务条款，当前等待项目所有者确认。
+- Vercel Supabase 资源：`supabase-aureolin-button`，状态 Available；
+- 数据库迁移：1 个版本成功；
+- 数据库验收：Auth 可用，2 张表 RLS 开启，6 条策略和建档触发器存在；
+- Vercel 生产部署：成功并绑定固定域名；
+- 生产浏览器验收：云端同步提示、注册弹窗和密码说明正确，控制台错误为 0；
+- GitHub CI：Web 与 API 两项全部通过。
 
-## 当前阻塞
+## 当前状态
 
-Vercel Marketplace 最终用户附加条款与 Supabase 隐私政策已经项目所有者明确同意。
-安装流程随后要求单独接受 Supabase 服务条款（https://supabase.com/terms）。Codex 不把
-隐私政策授权扩展到服务条款，因此尚未创建 Supabase 资源，也尚未设置生产环境变量。
+云端账号、数据库结构、生产环境变量与 Vercel 部署均已完成。尚未创建真实测试账号，
+因此“手机完成练习、电脑登录读取同一记录”的最终跨设备验收需要下一轮由用户使用自己的邮箱完成。
 
 ## 下一步
 
-1. 用户明确同意 Supabase 服务条款；
-2. 继续安装 Supabase 并创建项目资源；
-3. 执行数据库迁移；
-4. 同步 Vercel 环境变量；
-5. 部署生产版本；
-6. 用手机注册并完成一次练习；
-7. 用电脑登录同一账号核对跨设备档案；
-8. 再安全配置 DeepSeek 服务端密钥。
+1. 用户用自己的邮箱在手机生产站注册并确认邮件；
+2. 手机完成一次 SENet 练习；
+3. 电脑登录同一账号，核对阅读档案；
+4. 合并 GitHub PR #18；
+5. 按用户要求把生产 AI 默认切换为 DeepSeek；
+6. 通过安全环境变量流程配置 `DEEPSEEK_API_KEY`；
+7. 部署服务端 AI 接口并验证材料生成与诊断引用。

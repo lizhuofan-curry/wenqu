@@ -62,3 +62,24 @@
 - 根因：Windows 沙箱对子进程并发和默认 PowerShell 启动路径有限制。
 - 解决：改用系统 PowerShell 完整路径并按顺序读取。
 - 预防：本项目的重要前置文件优先串行读取；并发只用于稳定、互不依赖的只读检查。
+
+### 8. Supabase 的 Vercel 指引没有 Vite 专用版本
+
+- 现象：`vercel integration guide supabase --framework vite` 返回不支持，只列出 Next.js 与 SvelteKit。
+- 根因：Marketplace 的框架化指引尚未覆盖 Vite。
+- 解决：以实际下发变量、Supabase 官方客户端和 Vite `envPrefix` 规则完成适配，并通过生产构建验证。
+- 预防：框架指引缺失时不照搬 Next.js 示例，回到服务商官方 SDK 与当前构建工具规则。
+
+### 9. GitHub 连接器可能只有只读权限
+
+- 现象：分支推送成功后，GitHub 连接器创建 PR 返回 `403 Resource not accessible by integration`。
+- 根因：当前连接器安装没有该仓库的 Pull Request 写权限。
+- 解决：按照 GitHub 发布规范，改用已认证的 `gh pr create` 创建草稿 PR。
+- 预防：先用连接器尝试；遇到明确权限不足时使用官方 GitHub CLI 回退，并继续核对 PR 与 CI 状态。
+
+### 10. 自动化浏览器的 JavaScript 在 PowerShell 中有双重引用风险
+
+- 现象：含双引号或 CSS 选择器的 `agent-browser eval` 被 PowerShell 改写，产生 JavaScript 语法错误。
+- 根因：命令经过 PowerShell 和浏览器 CLI 两层解析。
+- 解决：能用 `get text`、`errors`、`console` 等原生命令时不使用 `eval`；元素引用统一加单引号。
+- 预防：复杂 JavaScript 使用独立脚本或标准输入；不要把多层引号直接塞进 PowerShell 单行命令。

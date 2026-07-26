@@ -4,7 +4,7 @@
 
 最后更新：2026-07-27
 
-## 2026-07-27｜v.2 云端账号基础已完成，等待官方条款确认
+## 2026-07-27｜v.2 云端账号与生产数据库已上线
 
 - 已加入 Supabase 真实邮箱注册、登录、会话保持和退出登录；
 - 已加入本地学习记录登录后自动迁移、完成练习自动写入云端、阅读档案读取云端；
@@ -12,16 +12,19 @@
 - 已补充 Supabase 环境变量、回调地址、安全边界和手机/电脑验收文档；
 - 无 Supabase 配置时继续使用浏览器本地模式，现有演示站不会中断；
 - `pnpm check` 已通过：TypeScript、Vite、Ruff 全部通过，Pytest `4 passed`；
-- Vercel 只读核对确认当前项目尚无 Marketplace 资源；
-- Vercel Marketplace 最终用户附加条款已由项目所有者明确授权并确认；
-- Supabase 隐私政策已由项目所有者明确授权并确认；
-- 安装流程随后出现独立的 Supabase 服务条款确认。Codex 未扩大原授权，当前等待项目所有者明确同意后继续。
+- 三份 Marketplace / Supabase 法律文件均由项目所有者逐项明确授权；
+- 已创建并连接 Supabase 资源 `supabase-aureolin-button`；
+- 已执行首个生产迁移，并通过 Auth、表、RLS、策略和触发器只读验收；
+- 已部署到 `https://wenqu-reading-room.vercel.app`；
+- 生产浏览器显示“云端同步已开启”，注册弹窗确认使用 Supabase Auth，控制台错误为 0；
+- 已创建 GitHub 草稿 PR #18，Web 与 API CI 全部通过；
+- 已建立 `docs/progress/lessons-learned.md`，并在 `AGENTS.md` 中设为每轮开始必读、结束必写。
 
 对应版本记录：`docs/progress/v.2.md`
 
 ### 当前最高优先级
 
-项目所有者确认 Supabase 服务条款（https://supabase.com/terms）后，立即继续创建 Supabase、执行迁移、同步生产变量、部署并完成跨设备验收。
+用户用自己的邮箱完成一次“手机注册与学习 → 电脑登录并读取档案”的跨设备验收；随后合并 PR #18，并按用户要求把生产 AI 默认切换为 DeepSeek。
 
 ## 当前阶段
 
