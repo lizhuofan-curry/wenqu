@@ -1,0 +1,17 @@
+{
+  "name": "study-companion-room",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "dev": "concurrently -k -n API,WEB -c magenta,cyan \"services\\api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --app-dir services/api --port 8000\" \"pnpm --dir apps/web dev\"",
+    "build": "pnpm --dir apps/web build",
+    "typecheck": "pnpm --dir apps/web typecheck",
+    "test:api": "services\\api\\.venv\\Scripts\\python.exe -m pytest services/api/tests -q",
+    "check:api": "services\\api\\.venv\\Scripts\\python.exe -m ruff check services/api",
+    "check": "pnpm typecheck && pnpm build && pnpm check:api && pnpm test:api"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "packageManager": "pnpm@11.9.0"
+}
