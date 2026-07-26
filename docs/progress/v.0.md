@@ -1,7 +1,7 @@
 # 知隅｜v.0 项目记录
 
 记录日期：2026-07-27  
-版本状态：本地验收通过，GitHub 发布中
+版本状态：本地与 GitHub 验收通过
 
 ## 本版本目标
 
@@ -79,7 +79,7 @@
 - [x] 前端构建、类型检查和后端测试通过；
 - [x] 浏览器到 API 的真实会话创建和页面切换通过；
 - [ ] 自定义材料 AI 生成完成在线验收：代码已修复，等待 API 项目可用额度；
-- [ ] GitHub 首次 CI 通过。
+- [x] GitHub 首次 CI 通过。
 
 ## 验证结果
 
@@ -94,7 +94,17 @@
 | 材料地图 | 通过 |
 | 双轨阅读 | 通过 |
 | OpenAI 网络与鉴权 | 请求到达服务端，返回额度不足 |
-| 密钥与论文忽略规则 | 待 Git 初始化后最终确认 |
+| 密钥与论文忽略规则 | 通过 |
+| GitHub Web CI | 通过 |
+| GitHub API CI | 通过 |
+
+## GitHub 发布
+
+- 仓库：<https://github.com/lizhuofan-curry/zhiyu-study-room>；
+- 当前可见性：Private；
+- 默认分支：`main`；
+- 首次 CI：<https://github.com/lizhuofan-curry/zhiyu-study-room/actions/runs/30213103782>；
+- 主题：`ai-learning`、`active-recall`、`education`、`research-papers`、`senet`、`react`、`fastapi`。
 
 ## 已知问题
 
@@ -117,10 +127,10 @@
 
 ### 立即执行
 
-1. 创建并推送 `zhiyu-study-room` GitHub 仓库；
-2. 验证 GitHub Actions；
-3. 补充 OpenAI API 项目额度后复测上传材料；
-4. 邀请第一位真实学习者完成 SENet。
+1. 邀请第一位真实学习者完成 SENet；
+2. 补充 OpenAI API 项目额度后复测上传材料；
+3. 准备可分享的封闭测试部署；
+4. 完成 5 人学习测试并决定 v.1 范围。
 
 ### v.1 候选范围
 

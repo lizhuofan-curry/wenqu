@@ -6,7 +6,7 @@
 
 ## 当前阶段
 
-**阶段：v.0 本地验收完成，准备发布 GitHub 并验证 CI**
+**阶段：v.0 本地与 GitHub 验收完成，进入真实学习者验证**
 
 ```text
 [x] 产品架构与产品设计
@@ -18,7 +18,7 @@
 [x] OpenAI Responses API 接入
 [x] 本地类型检查、构建、静态检查与接口测试
 [x] GitHub README、截图、CI 与 Dependabot
-[ ] 创建远程仓库并验证首次 CI
+[x] 创建远程仓库并验证首次 CI
 [ ] 邀请第一位真实学习者
 [ ] 完成 5 人首轮学习测试
 ```
@@ -86,6 +86,16 @@
 - 结论：请求已到达 OpenAI，密钥已被识别；当前阻塞是 API 项目额度，而非代码、网络或密钥格式；
 - 内置 SENet 全流程不调用模型，因此不受额度影响。
 
+### GitHub 发布
+
+- 仓库：<https://github.com/lizhuofan-curry/zhiyu-study-room>；
+- 当前可见性：Private；
+- `main` 已推送；
+- CI 运行：<https://github.com/lizhuofan-curry/zhiyu-study-room/actions/runs/30213103782>；
+- Web typecheck and build：成功；
+- API lint and tests：成功；
+- Dependabot 的 npm、pip 和 GitHub Actions 检查已启用。
+
 ## 当前已知限制
 
 - 自定义 PDF / Markdown 生成需要为 OpenAI API 项目补充可用额度；
@@ -96,14 +106,13 @@
 
 ## 接下来自动进行
 
-### P0｜发布 GitHub 并验证自动审查
+### P0｜首轮真实用户验证
 
-1. 初始化 Git；
-2. 确认 `.env.local`、PDF、数据库、缓存均被忽略；
-3. 创建 `zhiyu-study-room` 仓库；
-4. 推送 `main`；
-5. 检查 GitHub Actions 首次运行结果；
-6. 把仓库地址和 CI 结果写回本文件与 `v.0.md`。
+1. 邀请第一位目标学习者完成 SENet；
+2. 记录完成时间、退出点、题目答案和复述；
+3. 检查用户是否认可系统指出的误解；
+4. 使用 `docs/research/senet/learning-pack/04-user-test.md` 记录结果；
+5. 完成 5 人测试后决定 v.1 的优先级。
 
 ### P1｜补充额度后复测动态材料
 
@@ -112,9 +121,9 @@
 3. 完成该动态材料的一次答题和复述；
 4. 检查 AI 诊断是否严格引用材料来源。
 
-### P2｜首轮真实用户验证
+### P2｜准备可分享测试环境
 
-1. 邀请第一位目标学习者完成 SENet；
-2. 记录完成时间、退出点、题目答案和复述；
-3. 检查用户是否认可系统指出的误解；
-4. 完成 5 人测试后决定 v.1 的优先级。
+1. 将 FastAPI、前端和持久化存储拆成可部署配置；
+2. 增加生产环境变量、健康检查和日志；
+3. 增加最小隐私提示与数据删除入口；
+4. 发布封闭测试链接，不直接进入应用商店公开上架。
