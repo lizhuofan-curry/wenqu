@@ -88,7 +88,8 @@
 - `pnpm --filter @study-room/web build`：通过；
 - TypeScript 严格类型检查：通过；
 - Vite 生产构建：通过；
-- 产物：JS 约 242.61 kB（gzip 约 77.39 kB），CSS 约 45.76 kB（gzip 约 10.07 kB）；
+- 最终 `pnpm check`：TypeScript、Vite、Ruff 与 Pytest 全部通过；
+- 产物：JS 约 242.88 kB（gzip 约 77.65 kB），CSS 约 45.76 kB（gzip 约 10.07 kB）；
 - Playwright + Chrome 验证：首页 → 资料库 / 学习洞察 / 错因图谱 / 注册弹窗；
 - Playwright + Chrome 验证：首页 → SENet 材料地图 → 双轨讲解；
 - 浏览器初次验收发现缺少站点图标的 404，已补充问渠 SVG 图标并消除该资源缺口。
