@@ -22,6 +22,18 @@
 
 对应版本记录：`docs/progress/v.2.md`
 
+## 2026-07-27｜邮箱确认回调已修复
+
+- 用户真实注册邮件点击后跳转到 `http://localhost:3000`；
+- 已确认前端 `emailRedirectTo` 传入生产地址，根因是 Supabase Auth URL Configuration 仍为默认值；
+- 已打开准确的 Supabase URL Configuration 页面；
+- Site URL 已改为 `https://wenqu-reading-room.vercel.app`；
+- `https://wenqu-reading-room.vercel.app/**` 已加入 Redirect URLs；
+- 当前数据库中共有 2 个账号，其中 1 个邮箱已确认；未读取或记录邮箱内容；
+- 最新注册账号状态已只读确认是“邮箱已确认”；
+- 用户可直接回到生产站使用原邮箱和密码登录，无需重新注册或重发邮件；
+- 下一步完成一次手机学习，再在电脑登录同一账号验证跨设备记录。
+
 ### 当前最高优先级
 
 用户用自己的邮箱完成一次“手机注册与学习 → 电脑登录并读取档案”的跨设备验收；随后合并 PR #18，并按用户要求把生产 AI 默认切换为 DeepSeek。

@@ -83,3 +83,27 @@
 - 根因：命令经过 PowerShell 和浏览器 CLI 两层解析。
 - 解决：能用 `get text`、`errors`、`console` 等原生命令时不使用 `eval`；元素引用统一加单引号。
 - 预防：复杂 JavaScript 使用独立脚本或标准输入；不要把多层引号直接塞进 PowerShell 单行命令。
+
+## 2026-07-27｜邮箱确认链接跳转 localhost
+
+### 11. Supabase 新项目默认 Site URL 是 localhost
+
+- 现象：用户收到注册确认邮件，点击后跳到 `http://localhost:3000`，手机显示网络连接断开。
+- 根因：Supabase 新项目的 Auth `Site URL` 仍是默认 localhost，且生产地址没有加入 `Redirect URLs`；前端传入的 `emailRedirectTo` 不在允许列表时会回退到 Site URL。
+- 解决：将 Site URL 改为 `https://wenqu-reading-room.vercel.app`，并添加生产允许地址 `https://wenqu-reading-room.vercel.app/**`。
+- 验证：配置保存后截图确认两项值正确；数据库只读检查确认最新注册账号已经完成邮箱验证。
+- 预防：以后创建任何 Supabase 项目，账号测试前必须先检查 Auth URL Configuration；生产域名、预览域名和本地端口要分别配置，不能只验证前端参数。
+
+### 12. 邮箱确认成功与最终页面跳转是两个阶段
+
+- 现象：用户看到 localhost 失败页，容易判断为“邮箱没有确认成功”。
+- 根因：Supabase 通常先验证令牌，再跳转到 Site URL；跳转失败不必然意味着令牌验证失败。
+- 解决：通过数据库只统计 `auth.users` 总数与 `email_confirmed_at` 数量，不读取或显示邮箱，判断确认是否已经完成。
+- 预防：排查确认邮件时分别验证“令牌是否生效”和“回调页面是否可访问”，不要只看最终页面。
+
+### 13. `.env.local` 中的 URL 可能带引号
+
+- 现象：PowerShell 直接把 `.env.local` 的 `SUPABASE_URL` 转为 URI 时得到空对象。
+- 根因：Vercel 写入的环境变量值可能带双引号，未经清理无法直接转换为 URI。
+- 解决：解析后先 `Trim()` 并移除包裹引号，再构造项目管理地址。
+- 预防：所有自写环境文件解析都要兼容引号和空白；更复杂场景优先使用 dotenv 库。
