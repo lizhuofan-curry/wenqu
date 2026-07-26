@@ -6,6 +6,7 @@ import {
   BrainCircuit,
   Compass,
   LogIn,
+  LogOut,
   Menu,
   Moon,
   Search,
@@ -31,6 +32,8 @@ type ShellProps = {
   studyEnabled: boolean;
   userName: string;
   onAuth: (mode: "login" | "register") => void;
+  onSignOut: () => void;
+  cloudEnabled: boolean;
 };
 
 const items: Array<{
@@ -52,6 +55,8 @@ export function Shell({
   studyEnabled,
   userName,
   onAuth,
+  onSignOut,
+  cloudEnabled,
 }: ShellProps) {
   const [dark, setDark] = useState(() => localStorage.getItem("wenqu-theme") === "dark");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -67,7 +72,7 @@ export function Shell({
   }
 
   return (
-    <div className="app-shell">
+    <div className={view === "study" ? "app-shell study-mode" : "app-shell"}>
       <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
         <button className="mobile-close" onClick={() => setMobileOpen(false)}>
           <X size={20} />
@@ -107,18 +112,21 @@ export function Shell({
         </nav>
 
         <div className="source-card">
-          <span>问渠 · 取义</span>
-          <p>问渠那得清如许，为有源头活水来。</p>
-          <small>—— 朱熹《观书有感》</small>
+          <span className="source-seal" aria-hidden="true">问渠</span>
+          <div>
+            <span>问渠 · 取义</span>
+            <p>问渠那得清如许，为有源头活水来。</p>
+            <small>—— 朱熹《观书有感》</small>
+          </div>
         </div>
 
         <div className="sidebar-footer">
           <span className="status-dot" />
           <div>
-            <strong>本地记录已开启</strong>
-            <small>完成后可导出数据</small>
+            <strong>{cloudEnabled ? "云端同步已开启" : "本地记录已开启"}</strong>
+            <small>{cloudEnabled ? "登录后可跨设备查看" : "完成后可导出数据"}</small>
           </div>
-          <em>v.1</em>
+          <em>v.2</em>
         </div>
       </aside>
 
@@ -146,10 +154,16 @@ export function Shell({
               <span className="notice-dot" />
             </button>
             {userName ? (
-              <button className="user-chip">
-                <span>{userName.slice(0, 1)}</span>
-                {userName}
-              </button>
+              <>
+                <button className="user-chip" title="当前登录用户">
+                  <span>{userName.slice(0, 1)}</span>
+                  {userName}
+                </button>
+                <button className="login-button" onClick={onSignOut}>
+                  <LogOut size={16} />
+                  退出
+                </button>
+              </>
             ) : (
               <>
                 <button className="login-button" onClick={() => onAuth("login")}>

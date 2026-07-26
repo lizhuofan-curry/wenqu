@@ -2,6 +2,11 @@ import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, X } from "lucide-react";
 import { useState } from "react";
 import { saveProfile } from "../lib/storage";
 import type { LocalProfile } from "../lib/storage";
+import {
+  cloudEnabled,
+  loginCloudAccount,
+  registerCloudAccount,
+} from "../lib/cloud";
 
 type AuthModalProps = {
   open: boolean;
@@ -22,10 +27,13 @@ export function AuthModal({
   const [password, setPassword] = useState("");
   const [visible, setVisible] = useState(false);
   const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
 
   if (!open) return null;
 
-  function submit(event: React.FormEvent) {
+  async function submit(event: React.FormEvent) {
     event.preventDefault();
     const displayName = name.trim() || email.split("@")[0] || "问渠学友";
     const profile = {
@@ -33,13 +41,42 @@ export function AuthModal({
       email: email.trim().toLowerCase(),
       createdAt: new Date().toISOString(),
     };
-    saveProfile(profile);
-    setDone(true);
-    window.setTimeout(() => {
-      onSuccess(profile);
-      setDone(false);
-      onClose();
-    }, 650);
+    setBusy(true);
+    setError("");
+    try {
+      if (cloudEnabled) {
+        if (mode === "register") {
+          const result = await registerCloudAccount(
+            displayName,
+            profile.email,
+            password,
+          );
+          setSuccessMessage(result.message);
+          setDone(true);
+          if (result.profile) {
+            saveProfile(result.profile);
+            onSuccess(result.profile);
+          }
+        } else {
+          const cloudProfile = await loginCloudAccount(profile.email, password);
+          saveProfile(cloudProfile);
+          setSuccessMessage("登录成功，本机已有记录已同步到你的云端档案。");
+          setDone(true);
+          onSuccess(cloudProfile);
+        }
+      } else {
+        saveProfile(profile);
+        setSuccessMessage(
+          "本地档案已创建。昵称、邮箱和学习记录保存在当前浏览器，密码不会保存。",
+        );
+        setDone(true);
+        onSuccess(profile);
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "账户操作失败，请稍后重试。");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -64,8 +101,11 @@ export function AuthModal({
         {done ? (
           <div className="auth-success">
             <CheckCircle2 size={44} />
-            <h2>欢迎来到问渠</h2>
-            <p>本地档案已创建。昵称、邮箱和学习记录保存在当前浏览器，密码不会保存。</p>
+            <h2>{mode === "register" ? "欢迎来到问渠" : "欢迎回来"}</h2>
+            <p>{successMessage}</p>
+            <button className="primary-button wide" onClick={onClose}>
+              开始阅读
+            </button>
           </div>
         ) : (
           <>
@@ -74,7 +114,7 @@ export function AuthModal({
               <h2>{mode === "register" ? "从一次真正读懂开始" : "欢迎回来"}</h2>
               <p>注册即可保存复述、掌握度和错因轨迹。</p>
             </div>
-            <form onSubmit={submit}>
+            <form onSubmit={(event) => void submit(event)}>
               {mode === "register" && (
                 <label>
                   <span>怎么称呼你</span>
@@ -126,9 +166,10 @@ export function AuthModal({
                 <input type="checkbox" required />
                 <span>我同意演示版服务说明与隐私约定</span>
               </label>
-              <button className="primary-button wide" type="submit">
-                {mode === "register" ? "创建账户" : "登录"}
+              <button className="primary-button wide" type="submit" disabled={busy}>
+                {busy ? "请稍候…" : mode === "register" ? "创建账户" : "登录"}
               </button>
+              {error && <p className="auth-error" role="alert">{error}</p>}
             </form>
             <p className="auth-switch">
               {mode === "register" ? "已有账户？" : "还没有账户？"}
@@ -139,7 +180,9 @@ export function AuthModal({
               </button>
             </p>
             <p className="demo-notice">
-              当前为浏览器本地档案：不向服务器提交账户信息，也不会保存密码。
+              {cloudEnabled
+                ? "云端账号已开启：密码由 Supabase Auth 安全处理，问渠不保存明文密码。"
+                : "当前为浏览器本地档案：不向服务器提交账户信息，也不会保存密码。"}
             </p>
           </>
         )}

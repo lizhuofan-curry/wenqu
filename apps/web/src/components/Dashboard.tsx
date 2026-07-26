@@ -14,6 +14,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { useRef } from "react";
+import type { CSSProperties } from "react";
 import type { ArchiveItem, MaterialSummary, Persona } from "../lib/types";
 
 type DashboardProps = {
@@ -82,41 +83,55 @@ export function Dashboard({
             <ArrowRight size={18} />
           </button>
         </div>
-        <div className="hero-visual" aria-hidden="true">
-          <div className="orbit orbit-one" />
-          <div className="orbit orbit-two" />
-          <div className="knowledge-core">
-            <span>SE</span>
-            <small>channel</small>
+        <div className="hero-visual" aria-label="今日阅读材料与进度">
+          <div className="book-stack" aria-hidden="true">
+            <span className="book-sheet book-sheet-back" />
+            <span className="book-sheet book-sheet-middle" />
+            <article className="book-cover">
+              <small>今日材料 · CVPR 2018</small>
+              <strong>Squeeze-and-Excitation Networks</strong>
+              <span>通道注意力机制</span>
+              <em>问渠陪读本</em>
+            </article>
           </div>
-          <div className="floating-card card-a">Squeeze</div>
-          <div className="floating-card card-b">Excitation</div>
-          <div className="floating-card card-c">Scale</div>
+          <div
+            className="today-progress"
+            style={{ "--progress": `${Math.max(averageMastery, 18) * 3.6}deg` } as CSSProperties}
+          >
+            <strong>{archive.length ? averageMastery : 18}<small>%</small></strong>
+            <span>{archive.length ? "平均掌握" : "今日进度"}</span>
+          </div>
         </div>
       </section>
 
       <section className="quick-grid">
         <button onClick={() => onNavigate("materials")}>
-          <span className="quick-icon blue"><Library size={21} /></span>
-          <span><strong>资料库</strong><small>{materials.length} 份可学习材料</small></span>
+          <span className="quick-index">壹</span>
+          <span className="quick-icon blue"><Library size={20} /></span>
+          <span><strong>继续上次阅读</strong><small>{materials.length ? "SENet · 约 18 分钟" : "先添加一份资料"}</small></span>
+          <em>18 分钟</em>
           <ChevronRight size={17} />
         </button>
         <button onClick={() => onNavigate("insights")}>
-          <span className="quick-icon violet"><BarChart3 size={21} /></span>
+          <span className="quick-index">贰</span>
+          <span className="quick-icon violet"><BarChart3 size={20} /></span>
           <span>
-            <strong>学习洞察</strong>
+            <strong>回看一条错因</strong>
             <small>{archive.length ? `平均掌握度 ${averageMastery}%` : "完成一次学习后生成"}</small>
           </span>
+          <em>8 分钟</em>
           <ChevronRight size={17} />
         </button>
         <button onClick={() => onNavigate("misconceptions")}>
-          <span className="quick-icon coral"><BrainCircuit size={21} /></span>
+          <span className="quick-index">叁</span>
+          <span className="quick-icon coral"><BrainCircuit size={20} /></span>
           <span>
-            <strong>错因图谱</strong>
+            <strong>整理错因图谱</strong>
             <small>
               {archive.flatMap((item) => item.misconception_tags).length} 个错因记录
             </small>
           </span>
+          <em>5 分钟</em>
           <ChevronRight size={17} />
         </button>
       </section>

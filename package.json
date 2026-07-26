@@ -8,6 +8,8 @@
     "typecheck": "npm --prefix apps/web run typecheck",
     "test:api": "services\\api\\.venv\\Scripts\\python.exe -m pytest services/api/tests -q",
     "check:api": "services\\api\\.venv\\Scripts\\python.exe -m ruff check services/api",
+    "db:migrate": "services\\api\\.venv\\Scripts\\python.exe services/api/scripts/apply_supabase_migrations.py",
+    "db:check": "services\\api\\.venv\\Scripts\\python.exe services/api/scripts/check_supabase.py",
     "check": "pnpm typecheck && pnpm build && pnpm check:api && pnpm test:api"
   },
   "devDependencies": {

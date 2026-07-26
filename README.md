@@ -33,7 +33,7 @@ v.0 以 CVPR 2018 论文 *Squeeze-and-Excitation Networks* 为首份内置材料
 - 蓝白主题、白天 / 夜间模式与响应式导航；
 - 今日阅读、资料库、学习洞察、错因图谱和阅读档案；
 - 可公开访问的无后端演示模式；
-- 前端注册 / 登录演示与浏览器本地账户；
+- 可渐进启用的 Supabase 真实邮箱注册、登录与跨设备学习档案；
 - 三种陪读人格：黄风教练、安静师姐、严格研究员；
 - SENet 材料地图与三个学习目标；
 - 严格轨 / 陪读轨双栏阅读；
@@ -50,13 +50,16 @@ v.0 以 CVPR 2018 论文 *Squeeze-and-Excitation Networks* 为首份内置材料
 
 备用 Vercel 地址：<https://wenqu-reading-room.vercel.app>
 
-在线版默认使用内置演示数据，因此无需启动本地后端或配置 AI 密钥。注册信息只保存在当前浏览器；如需真实材料解析、SQLite 档案和 AI 生成，请按下文运行完整前后端。
+在线版默认使用内置演示数据，因此无需启动本地后端或配置 AI 密钥。未配置
+Supabase 时，账号与记录保存在当前浏览器；配置后自动升级为真实邮箱账号和跨设备档案。
+如需真实材料解析、SQLite 档案和 AI 生成，请按下文运行完整前后端。
 
 ## 项目结构
 
 ```text
 apps/web/                    React + TypeScript 前端
 services/api/                FastAPI、评分、AI 与 SQLite
+supabase/migrations/         云端账号与学习记录数据库迁移
 docs/product/                产品架构与交互设计
 docs/research/senet/         SENet 证据与学习包
 docs/progress/               版本进展与下一步
@@ -105,8 +108,10 @@ DEEPSEEK_MODEL=deepseek-v4-flash
 - 当前公开版把昵称、邮箱、答案、复述和诊断保存在当前浏览器的 `localStorage`；
 - 密码不会保存，也不会提交到服务器；
 - 完成学习后可在“阅读档案”下载 JSON 测试数据；
-- 清理浏览器网站数据或更换设备后，本地记录不会自动同步；
-- 真正的多设备账户和集中数据分析需要接入生产数据库与身份认证。
+- 未配置 Supabase 时，清理浏览器网站数据或更换设备后，本地记录不会自动同步；
+- 配置 `VITE_SUPABASE_URL` 与 `VITE_SUPABASE_ANON_KEY` 后，登录用户的记录会自动同步；
+- 浏览器只使用 Supabase 公开 anon key，数据由 RLS 按用户身份隔离，禁止放入
+  `service_role` 管理员密钥。
 
 ### 4. 启动
 
@@ -143,6 +148,7 @@ CI 不调用 OpenAI 或 DeepSeek API，也不需要仓库密钥。
 - [当前进展与下一步](docs/progress/current.md)
 - [内容生产自动化工作流](docs/workflow/content-workflow.md)
 - [DeepSeek 接入与数据边界](docs/deployment/deepseek.md)
+- [Supabase 真实账号与跨设备记录](docs/deployment/supabase.md)
 
 ## 路线图
 

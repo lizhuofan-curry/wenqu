@@ -4,3 +4,4 @@ openai>=1.100,<3
 python-dotenv>=1.1,<2
 python-multipart>=0.0.20,<1
 pymupdf>=1.26,<2
+psycopg[binary]>=3.2,<4
