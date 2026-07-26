@@ -17,6 +17,7 @@
 - 保存 8 张真实运行产品原型图；
 - 发布推荐公开演示站点 <https://lizhuofan-curry.github.io/wenqu/>；
 - 发布 Vercel 备用站点 <https://wenqu-reading-room.vercel.app>；
+- GitHub 仓库更名为 `wenqu`、转为公开，并更新带表情的项目描述；
 - 更新 README 与实时进度文档。
 
 ## 主要文件
@@ -43,4 +44,4 @@
 
 ## 下一步
 
-最高优先级：邀请第一位真实学习者打开公网链接并完成 SENet 流程，记录完成时间、退出点和反馈。
+最高优先级：邀请第一位真实学习者打开公网链接并完成 SENet 流程，记录完成时间、退出点和反馈；确认朋友的 GitHub 用户名后建立 Collaborator + Issue + Pull Request 共创流程。

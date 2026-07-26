@@ -24,7 +24,9 @@
 [x] 无后端公开演示模式
 [x] v.1 产品原型图归档
 [x] 公网站点发布与公开权限确认
+[x] GitHub 仓库更名为 wenqu 并转为公开
 [ ] 邀请第一位真实学习者
+[ ] 邀请首位项目共创者
 [ ] 完成 5 人首轮学习测试
 ```
 
@@ -141,10 +143,12 @@
 
 ### GitHub 发布
 
-- 仓库：<https://github.com/lizhuofan-curry/zhiyu-study-room>；
-- 当前可见性：Private；
+- 仓库：<https://github.com/lizhuofan-curry/wenqu>；
+- 仓库名称已由 `zhiyu-study-room` 更新为 `wenqu`；
+- 当前可见性：Public；
+- 仓库描述：📚 问渠 Wenqu｜以原文证据为核心的 AI 个性化陪读室：材料地图、双轨讲解、主动回忆、复述诊断与错因图谱 ✨；
 - `main` 已推送；
-- CI 运行：<https://github.com/lizhuofan-curry/zhiyu-study-room/actions/runs/30213103782>；
+- CI 运行：<https://github.com/lizhuofan-curry/wenqu/actions/runs/30213103782>；
 - Web typecheck and build：成功；
 - API lint and tests：成功；
 - Dependabot 的 npm、pip 和 GitHub Actions 检查已启用。
@@ -167,14 +171,22 @@
 4. 使用 `docs/research/senet/learning-pack/04-user-test.md` 记录结果；
 5. 完成 5 人测试后决定 v.1 的优先级。
 
-### P1｜补充额度后复测动态材料
+### P1｜建立朋友共创流程
+
+1. 确认朋友的 GitHub 用户名；
+2. 从仓库 `Settings → Collaborators` 发出协作者邀请；
+3. 约定功能改动通过独立分支和 Pull Request 提交；
+4. 使用 GitHub Issues 记录需求、缺陷和产品讨论；
+5. 为首次共创补充贡献指南、Issue 模板和 Pull Request 模板。
+
+### P2｜补充额度后复测动态材料
 
 1. 在 OpenAI API 项目中补充余额或提高限额；
 2. 上传短 Markdown，验证学习包生成；
 3. 完成该动态材料的一次答题和复述；
 4. 检查 AI 诊断是否严格引用材料来源。
 
-### P2｜准备真实多人测试环境
+### P3｜准备真实多人测试环境
 
 1. 将 FastAPI、前端和持久化存储拆成可部署配置；
 2. 增加生产环境变量、健康检查和日志；

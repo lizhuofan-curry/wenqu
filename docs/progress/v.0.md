@@ -100,10 +100,10 @@
 
 ## GitHub 发布
 
-- 仓库：<https://github.com/lizhuofan-curry/zhiyu-study-room>；
+- 仓库：<https://github.com/lizhuofan-curry/wenqu>；
 - 当前可见性：Private；
 - 默认分支：`main`；
-- 首次 CI：<https://github.com/lizhuofan-curry/zhiyu-study-room/actions/runs/30213103782>；
+- 首次 CI：<https://github.com/lizhuofan-curry/wenqu/actions/runs/30213103782>；
 - 主题：`ai-learning`、`active-recall`、`education`、`research-papers`、`senet`、`react`、`fastapi`。
 
 ## 已知问题
