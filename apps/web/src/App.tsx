@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ArchiveView } from "./components/ArchiveView";
+import { AuthModal } from "./components/AuthModal";
 import { Dashboard } from "./components/Dashboard";
+import { InsightsView } from "./components/InsightsView";
+import { MaterialsView } from "./components/MaterialsView";
+import { MisconceptionsView } from "./components/MisconceptionsView";
 import { Shell } from "./components/Shell";
+import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
 import { api } from "./lib/api";
 import type {
@@ -11,8 +16,6 @@ import type {
   Persona,
   Session,
 } from "./lib/types";
-
-type View = "home" | "study" | "archive";
 
 function App() {
   const [view, setView] = useState<View>("home");
@@ -25,6 +28,11 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
+  const [authOpen, setAuthOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("register");
+  const [userName, setUserName] = useState(
+    () => localStorage.getItem("wenqu-demo-user") || "",
+  );
 
   const persona = useMemo(
     () => personas.find((item) => item.id === selectedPersona) || personas[0],
@@ -112,6 +120,11 @@ function App() {
       view={view}
       onNavigate={(next) => void navigate(next)}
       studyEnabled={Boolean(material && session)}
+      userName={userName}
+      onAuth={(mode) => {
+        setAuthMode(mode);
+        setAuthOpen(true);
+      }}
     >
       {error && (
         <div className="global-error" role="alert">
@@ -129,8 +142,19 @@ function App() {
           onUpload={(file) => void upload(file)}
           busy={busy}
           uploadStatus={uploadStatus}
+          onNavigate={(next) => void navigate(next)}
         />
       )}
+      {view === "materials" && (
+        <MaterialsView
+          materials={materials}
+          busy={busy}
+          onStart={(id) => void startStudy(id)}
+          onUpload={(file) => void upload(file)}
+        />
+      )}
+      {view === "insights" && <InsightsView />}
+      {view === "misconceptions" && <MisconceptionsView />}
       {view === "study" && material && session && persona && (
         <StudyFlow
           material={material}
@@ -142,9 +166,15 @@ function App() {
         />
       )}
       {view === "archive" && <ArchiveView items={archive} />}
+      <AuthModal
+        key={authMode}
+        open={authOpen}
+        initialMode={authMode}
+        onClose={() => setAuthOpen(false)}
+        onSuccess={setUserName}
+      />
     </Shell>
   );
 }
 
 export default App;
-

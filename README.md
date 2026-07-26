@@ -1,15 +1,15 @@
-# 知隅 Zhiyu
+# 问渠 Wenqu
 
-> 让一个你愿意听的人，带你把论文读懂、答出来、讲明白。
+> 问渠不替你读，而是陪你把知识变成自己的话。
 
 [![CI](https://github.com/lizhuofan-curry/zhiyu-study-room/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhuofan-curry/zhiyu-study-room/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-v.0-d9ab62)
 ![React](https://img.shields.io/badge/React-19-61dafb)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python-0f9d79)
 
-![知隅 v.0 阅读室首页](docs/assets/zhiyu-v0-home.png)
+![问渠 v.1 今日阅读](docs/product/prototypes/wenqu-v1/01-home-light.png)
 
-**知隅**是一间强调原文证据的 AI 陪读阅读室。它不止概括材料，而是带学习者完成一条完整闭环：
+**问渠**取意于朱熹《观书有感》“问渠那得清如许，为有源头活水来”。它是一间强调原文证据的 AI 陪读阅读室，不止概括材料，而是带学习者完成一条完整闭环：
 
 ```text
 材料地图 → 双轨跟读 → 主动回忆 → 用话复述 → 错因诊断 → 阅读档案
@@ -28,6 +28,10 @@ v.0 以 CVPR 2018 论文 *Squeeze-and-Excitation Networks* 为首份内置材料
 
 ## 当前可用功能
 
+- 蓝白主题、白天 / 夜间模式与响应式导航；
+- 今日阅读、资料库、学习洞察、错因图谱和阅读档案；
+- 可公开访问的无后端演示模式；
+- 前端注册 / 登录演示与浏览器本地账户；
 - 三种陪读人格：黄风教练、安静师姐、严格研究员；
 - SENet 材料地图与三个学习目标；
 - 严格轨 / 陪读轨双栏阅读；
