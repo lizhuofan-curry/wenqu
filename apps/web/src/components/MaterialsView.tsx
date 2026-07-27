@@ -4,10 +4,12 @@ import {
   Clock3,
   FileSearch,
   FileText,
+  Loader2,
+  RefreshCw,
   Trash2,
   UploadCloud,
 } from "lucide-react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MaterialSummary } from "../lib/types";
 
 type Props = {
@@ -16,6 +18,7 @@ type Props = {
   onStart: (id: string) => void;
   onUpload: (file: File) => void;
   onDelete: (id: string) => void;
+  onRegenerate: (id: string) => void;
 };
 
 function source_type_label(m: MaterialSummary) {
@@ -24,10 +27,26 @@ function source_type_label(m: MaterialSummary) {
   return "MD";
 }
 
-export function MaterialsView({ materials, busy, onStart, onUpload, onDelete }: Props) {
+export function MaterialsView({ materials, busy, onStart, onUpload, onDelete, onRegenerate }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
+  const [stepIndex, setStepIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Progress animation during upload
+  useEffect(() => {
+    if (!busy) { setStepIndex(0); return; }
+    const steps = ["读取文件…", "提取文本…", "AI 翻译中…", "生成题目…"];
+    setStepIndex(0);
+    let i = 0;
+    const timer = setInterval(() => {
+      i++;
+      if (i < steps.length) setStepIndex(i);
+    }, 4000);
+    return () => clearInterval(timer);
+  }, [busy]);
+
+  const stepLabels = ["读取文件…", "提取文本…", "AI 翻译中…", "生成题目…"];
   const filtered = materials.filter((item) => {
     const matchesQuery = `${item.title} ${item.subtitle}`
       .toLowerCase()
@@ -64,6 +83,21 @@ export function MaterialsView({ materials, busy, onStart, onUpload, onDelete }: 
           }}
         />
       </header>
+      {busy && (
+        <div className="upload-progress">
+          <Loader2 className="spin" size={20} />
+          <div className="upload-steps">
+            {stepLabels.map((label, i) => (
+              <span key={label} className={i === stepIndex ? "active" : i < stepIndex ? "done" : ""}>
+                {label}
+              </span>
+            ))}
+          </div>
+          <div className="upload-track">
+            <span style={{ width: `${((stepIndex + 1) / stepLabels.length) * 100}%` }} />
+          </div>
+        </div>
+      )}
       <div className="library-toolbar">
         <div className="search-box">
           <FileSearch size={18} />
@@ -123,9 +157,14 @@ export function MaterialsView({ materials, busy, onStart, onUpload, onDelete }: 
               </div>
             </div>
             {material.source_type !== "builtin" && (
-              <button className="card-delete" onClick={(e) => { e.stopPropagation(); onDelete(material.id); }} title="删除材料" aria-label="删除材料">
-                <Trash2 size={15} />
-              </button>
+              <>
+                <button className="card-regenerate" onClick={(e) => { e.stopPropagation(); onRegenerate(material.id); }} title="重新 AI 翻译" aria-label="重新 AI 翻译" disabled={busy}>
+                  <RefreshCw size={14} />
+                </button>
+                <button className="card-delete" onClick={(e) => { e.stopPropagation(); onDelete(material.id); }} title="删除材料" aria-label="删除材料">
+                  <Trash2 size={15} />
+                </button>
+              </>
             )}
           </article>
         ))}

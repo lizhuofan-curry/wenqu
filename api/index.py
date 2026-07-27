@@ -981,6 +981,63 @@ def delete_material(material_id: str):
     return {"deleted": material_id}
 
 
+@app.post("/api/materials/{material_id}/regenerate")
+async def regenerate_material(material_id: str):
+    """Re-run AI translation + questions on an existing material."""
+    if material_id == "senet-cvpr-2018":
+        raise HTTPException(403, "内置材料不需要重新生成。")
+    m = store.get_material(material_id)
+    if m is None:
+        raise HTTPException(404, "材料不存在。")
+
+    source_text = ""
+    for s in m.get("sections", []):
+        source_text += s.get("strict_track", "")
+    if not source_text or len(source_text) < 50:
+        raise HTTPException(400, "该材料没有足够原文内容，无法重新生成翻译。")
+
+    filename = m.get("title", "untitled")
+    ai_data = {}
+    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
+    if has_ai:
+        try: ai_data = await _ai_generate(filename, source_text)
+        except Exception: pass
+
+    if ai_data:
+        ai_sections = ai_data.get("sections_translation") or []
+        if ai_sections and isinstance(ai_sections, list):
+            existing = list(m.get("sections", []))
+            for i, s in enumerate(ai_sections[:len(existing)]):
+                existing[i]["companion_track"] = s.get("companion_track", existing[i].get("companion_track",""))
+            m["sections"] = existing
+
+        ai_map = ai_data.get("map_summaries") or {}
+        if ai_map and isinstance(ai_map, dict):
+            for node in m.get("map", []):
+                key = node.get("key", "")
+                if ai_map.get(key):
+                    node["summary"] = ai_map[key]
+
+        ai_questions = ai_data.get("questions", [])
+        if ai_questions and isinstance(ai_questions, list) and len(ai_questions) >= 3:
+            m["questions"] = [dict(
+                id=q.get("id", f"q{i+1}"),
+                kind=q.get("kind", "concept"),
+                prompt=q.get("prompt", ""),
+                hint=q.get("hint", ""),
+                source=dict(label="上传文件", detail=q.get("source","")),
+                answer_guide=q.get("answer_guide", ""),
+                max_score=q.get("max_score", 4),
+            ) for i, q in enumerate(ai_questions[:3])]
+
+    # Re-persist
+    if _supa_ok():
+        try: _supa_up("materials", {"id": material_id, "payload_json": m})
+        except Exception: pass
+
+    return m
+
+
 class CreateSessionRequest(BaseModel):
     material_id: str
     persona_id: str = "huangfeng"

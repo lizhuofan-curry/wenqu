@@ -282,4 +282,6 @@ export const api = {
   },
   deleteMaterial: (id: string) =>
     request<{ deleted: string }>(`/materials/${id}`, { method: "DELETE" }),
+  regenerateMaterial: (id: string) =>
+    request<Material>(`/materials/${id}/regenerate`, { method: "POST" }, 40_000),
 };

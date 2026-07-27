@@ -233,6 +233,13 @@ function App() {
               setError(reason instanceof Error ? reason.message : "删除失败。");
             });
           }}
+          onRegenerate={(id) => {
+            void api.regenerateMaterial(id).then((updated) => {
+              setMaterials((prev) => prev.map((m) => m.id === id ? updated : m));
+            }).catch((reason: unknown) => {
+              setError(reason instanceof Error ? reason.message : "重新生成失败。");
+            });
+          }}
         />
       )}
       {view === "insights" && (
