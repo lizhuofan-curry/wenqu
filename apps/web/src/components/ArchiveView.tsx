@@ -1,9 +1,12 @@
-import { Archive, ArrowRight, Brain, CalendarDays, Download } from "lucide-react";
+import { Archive, Brain, CalendarDays, ChevronDown, ChevronUp, Download } from "lucide-react";
+import { useState } from "react";
 import type { ArchiveItem } from "../lib/types";
 import { exportLocalData } from "../lib/storage";
 import { cloudEnabled } from "../lib/cloud";
 
 export function ArchiveView({ items }: { items: ArchiveItem[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
   return (
     <div className="archive-page page-enter">
       <header className="topbar">
@@ -32,33 +35,48 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
         </div>
       ) : (
         <div className="archive-list">
-          {items.map((item) => (
-            <article className="archive-card" key={item.session_id}>
-              <div className="archive-score">
-                <strong>{item.mastery}</strong>
-                <span>掌握度</span>
-              </div>
-              <div className="archive-main">
-                <div className="archive-meta">
-                  <span>
-                    <CalendarDays size={14} />
-                    {new Date(item.completed_at).toLocaleDateString("zh-CN")}
-                  </span>
-                  <span>{item.persona_name}</span>
+          {items.map((item) => {
+            const open = expandedId === item.session_id;
+            return (
+              <article
+                className={`archive-card${open ? " expanded" : ""}`}
+                key={item.session_id}
+                onClick={() => setExpandedId(open ? null : item.session_id)}
+              >
+                <div className="archive-score">
+                  <strong>{item.mastery}</strong>
+                  <span>掌握度</span>
                 </div>
-                <h2>{item.material_title}</h2>
-                <p>{item.headline}</p>
-                {item.misconception_tags.length > 0 && (
-                  <div className="archive-tags">
-                    {item.misconception_tags.map((tag) => (
-                      <span key={tag}>{tag}</span>
-                    ))}
+                <div className="archive-main">
+                  <div className="archive-meta">
+                    <span>
+                      <CalendarDays size={14} />
+                      {new Date(item.completed_at).toLocaleDateString("zh-CN")}
+                    </span>
+                    <span>{item.persona_name}</span>
                   </div>
-                )}
-              </div>
-              <ArrowRight size={18} className="archive-arrow" />
-            </article>
-          ))}
+                  <h2>{item.material_title}</h2>
+                  <p>{item.headline}</p>
+                  {item.misconception_tags.length > 0 && (
+                    <div className="archive-tags">
+                      {item.misconception_tags.map((tag) => (
+                        <span key={tag}>{tag}</span>
+                      ))}
+                    </div>
+                  )}
+                  {open && (
+                    <div className="archive-detail">
+                      <div className="archive-detail-section">
+                        <strong>我的复述</strong>
+                        <p>{item.retelling || "（未记录复述内容）"}</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+              </article>
+            );
+          })}
         </div>
       )}
     </div>

@@ -999,7 +999,13 @@
   border: 1px solid var(--line);
   background: var(--card);
   box-shadow: var(--shadow-card);
+  cursor: pointer;
   transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+
+.archive-card.expanded {
+  min-height: auto;
+  padding-bottom: 20px;
 }
 
 .archive-card::after {
@@ -1061,11 +1067,32 @@
   font-size: 9px;
 }
 
-.archive-card > button {
-  align-self: center;
-  margin-right: 16px;
+.archive-card > svg {
+  align-self: flex-start;
+  margin: 24px 16px 0 0;
   color: var(--indigo);
-  background: transparent;
+  flex-shrink: 0;
+}
+
+.archive-detail {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.archive-detail-section strong {
+  display: block;
+  margin-bottom: 6px;
+  font-family: var(--font-serif);
+  font-size: 14px;
+  color: var(--indigo);
+}
+
+.archive-detail-section p {
+  color: var(--ink-soft);
+  font-size: 14px;
+  line-height: 1.7;
+  white-space: pre-wrap;
 }
 
 .empty-archive {
