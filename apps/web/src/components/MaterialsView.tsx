@@ -52,6 +52,7 @@ export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
           onChange={(event) => {
             const file = event.target.files?.[0];
             if (file) onUpload(file);
+            event.target.value = "";
           }}
         />
       </header>

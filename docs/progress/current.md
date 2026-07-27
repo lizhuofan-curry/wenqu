@@ -75,6 +75,37 @@
 ### 涉及文件
 `lib/api.ts`, `components/AuthModal.tsx`, `components/Dashboard.tsx`, `components/InsightsView.tsx`, `components/MisconceptionsView.tsx`, `styles/pages.css`, `App.tsx`, `vite-env.d.ts`
 
+## 2026-07-27｜前端评审批次 C 代码修复完成 ✅
+
+- 在批次 A/B 基础上完成全部四项 P2 修复：
+
+### C1 代码分割（supabase-js 懒加载）
+- `apps/web/src/lib/cloud.ts`：删除静态 `import { createClient } from "@supabase/supabase-js"`，改为 `import("@supabase/supabase-js")` 动态懒加载；
+- `cloudEnabled=false` 时不再打包 supabase-js，生产 JS 从 467 kB 降至 **253 kB**（减少 214 kB / 46%）；
+- `watchCloudAuth` 改为 async，`App.tsx` useEffect 适配 `.then()` 模式获取 cleanup 函数。
+
+### C2 死代码清理
+- `Shell.tsx`：删除空的假搜索框（⌘K 未实现）和装饰性通知铃按钮，清理 `Search`/`Bell` 导入；
+- `ArchiveView.tsx`：死按钮退化为纯装饰 `<ArrowRight>` 图标；
+- `storage.ts`：删除 `saveProfile` 中 LEGACY_USER_KEY 冗余双写（loadProfile 中保留迁移读取路径）。
+
+### C3 杂项修复
+- `MaterialsView.tsx`：上传 input 选完文件后加 `event.target.value = ""`，支持连续选同一文件；
+- 根 `package.json`：`build`/`typecheck` 中 `npm` → `pnpm`，与 `packageManager` 声明一致；
+- `.env.example`：加注释分隔服务端（AI_PROVIDER 等）与客户端（VITE_*）变量。
+
+### C4 vercel.json 修复
+- `vercel.json` rewrite 规则新增 `api/` 排除，避免同域 API 请求被 SPA 回退吞为 `index.html`（200），产生非 TypeError 静默故障。
+
+### 验证结果
+- TypeScript：零错误；
+- Vite build：JS 252.64 kB（gzip 80.95 kB），CSS 41.16 kB（gzip 8.90 kB）；
+- Ruff：All checks passed；
+- Pytest：1 passed, 3 PermissionError（已知环境问题）。
+
+### 涉及文件
+`lib/cloud.ts`（重写）, `components/Shell.tsx`, `components/ArchiveView.tsx`, `components/MaterialsView.tsx`, `lib/storage.ts`, `App.tsx`, `package.json`, `.env.example`, `vercel.json`
+
 ## 2026-07-27｜当前对话已整理导出
 
 - 已将本轮从产品规划、SENet 首版、云端账号到 v.3 前端改版的主要对话整理为 Markdown；
@@ -135,7 +166,7 @@
 
 ### 当前最高优先级
 
-将 v.3 纸上书房合并并部署到 Vercel，随后由用户完成一次“手机注册与学习 → 电脑登录并读取档案”的跨设备验收；验收通过后按用户要求把生产 AI 默认切换为 DeepSeek。
+v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.vercel.app。下一步：跨设备数据验收 → DeepSeek 生产配置。
 
 ## 当前阶段
 
@@ -336,7 +367,7 @@
 
 - 未登录状态仍使用当前浏览器本地记录；登录后才会同步到 Supabase；
 - 修复发布前、尚未接入 Supabase 时完成的手机练习无法从旧页面内存补取；
-- v.3 视觉改版尚待合并 PR 并发布到 Vercel；
+- v.3 视觉改版已合并 PR #19 并发布到 Vercel；
 - DeepSeek 接入代码已完成，但尚未安全配置用户的 `DEEPSEEK_API_KEY`；
 - FastAPI 本地回退仍使用 SQLite；生产账号与学习记录已由 Supabase RLS 按用户隔离；
 - v.0 只支持有文本层的 PDF，不支持扫描件 OCR；

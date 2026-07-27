@@ -1,10 +1,12 @@
-import { createClient, type Session as AuthSession } from "@supabase/supabase-js";
 import type { ArchiveItem } from "./types";
 import {
   loadStudyRecords,
   type LocalProfile,
   type LocalStudyRecord,
 } from "./storage";
+
+type SupabaseClient = import("@supabase/supabase-js").SupabaseClient;
+type AuthSession = import("@supabase/supabase-js").Session;
 
 const supabaseUrl = (
   import.meta.env.VITE_SUPABASE_URL ||
@@ -18,16 +20,28 @@ const supabaseKey = (
 
 export const cloudEnabled = Boolean(supabaseUrl && supabaseKey);
 
-const supabase =
-  cloudEnabled && supabaseUrl && supabaseKey
-    ? createClient(supabaseUrl, supabaseKey, {
+let _clientPromise: Promise<SupabaseClient | null> | undefined;
+
+/** Lazily initialises the Supabase client. supabase-js is only loaded when an
+ *  auth or data function is called while cloudEnabled=true. */
+async function getClient(): Promise<SupabaseClient | null> {
+  if (_clientPromise !== undefined) return _clientPromise;
+  if (!cloudEnabled || !supabaseUrl || !supabaseKey) {
+    _clientPromise = Promise.resolve(null);
+    return _clientPromise;
+  }
+  _clientPromise = import("@supabase/supabase-js").then(
+    ({ createClient }) =>
+      createClient(supabaseUrl, supabaseKey, {
         auth: {
           persistSession: true,
           autoRefreshToken: true,
           detectSessionInUrl: true,
         },
-      })
-    : null;
+      }),
+  );
+  return _clientPromise;
+}
 
 type CloudStudyRow = {
   session_id: string;
@@ -74,33 +88,37 @@ function profileFromSession(session: AuthSession): LocalProfile {
   };
 }
 
-function requireClient() {
-  if (!supabase) {
+async function requireClient() {
+  const client = await getClient();
+  if (!client) {
     throw new Error("云端账号尚未配置，请先完成 Supabase 环境配置。");
   }
-  return supabase;
+  return client;
 }
 
 async function currentUserId() {
-  if (!supabase) return null;
-  const { data, error } = await supabase.auth.getUser();
+  const client = await getClient();
+  if (!client) return null;
+  const { data, error } = await client.auth.getUser();
   if (error || !data.user) return null;
   return data.user.id;
 }
 
 export async function getCloudProfile(): Promise<LocalProfile | null> {
-  if (!supabase) return null;
-  const { data } = await supabase.auth.getSession();
+  const client = await getClient();
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
   return data.session ? profileFromSession(data.session) : null;
 }
 
-export function watchCloudAuth(
+export async function watchCloudAuth(
   callback: (profile: LocalProfile | null) => void,
 ) {
-  if (!supabase) return () => undefined;
+  const client = await getClient();
+  if (!client) return () => undefined;
   const {
     data: { subscription },
-  } = supabase.auth.onAuthStateChange((_event, session) => {
+  } = client.auth.onAuthStateChange((_event, session) => {
     callback(session ? profileFromSession(session) : null);
   });
   return () => subscription.unsubscribe();
@@ -111,7 +129,7 @@ export async function registerCloudAccount(
   email: string,
   password: string,
 ) {
-  const client = requireClient();
+  const client = await requireClient();
   const { data, error } = await client.auth.signUp({
     email,
     password,
@@ -134,7 +152,7 @@ export async function registerCloudAccount(
 }
 
 export async function loginCloudAccount(email: string, password: string) {
-  const client = requireClient();
+  const client = await requireClient();
   const { data, error } = await client.auth.signInWithPassword({
     email,
     password,
@@ -145,8 +163,9 @@ export async function loginCloudAccount(email: string, password: string) {
 }
 
 export async function logoutCloudAccount() {
-  if (!supabase) return;
-  const { error } = await supabase.auth.signOut();
+  const client = await getClient();
+  if (!client) return;
+  const { error } = await client.auth.signOut();
   if (error) throw new Error(error.message);
 }
 
@@ -169,10 +188,11 @@ function toCloudRecord(record: LocalStudyRecord, userId: string) {
 }
 
 export async function saveRecordToCloud(record: LocalStudyRecord) {
-  if (!supabase) return false;
+  const client = await getClient();
+  if (!client) return false;
   const userId = await currentUserId();
   if (!userId) return false;
-  const { error } = await supabase
+  const { error } = await client
     .from("study_records")
     .upsert(toCloudRecord(record, userId), { onConflict: "session_id,user_id" });
   if (error) throw new Error(`云端记录保存失败：${error.message}`);
@@ -180,12 +200,13 @@ export async function saveRecordToCloud(record: LocalStudyRecord) {
 }
 
 export async function syncLocalRecordsToCloud() {
-  if (!supabase) return 0;
+  const client = await getClient();
+  if (!client) return 0;
   const userId = await currentUserId();
   if (!userId) return 0;
   const records = loadStudyRecords();
   if (!records.length) return 0;
-  const { error } = await supabase
+  const { error } = await client
     .from("study_records")
     .upsert(records.map((record) => toCloudRecord(record, userId)), {
       onConflict: "session_id,user_id",
@@ -195,10 +216,11 @@ export async function syncLocalRecordsToCloud() {
 }
 
 export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
-  if (!supabase) return null;
+  const client = await getClient();
+  if (!client) return null;
   const userId = await currentUserId();
   if (!userId) return null;
-  const { data, error } = await supabase
+  const { data, error } = await client
     .from("study_records")
     .select(
       "session_id, material_id, material_title, persona_name, completed_at, mastery, headline, misconception_tags, retelling",

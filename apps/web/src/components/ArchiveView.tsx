@@ -56,9 +56,7 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
                   </div>
                 )}
               </div>
-              <button aria-label="查看档案">
-                <ArrowRight size={18} />
-              </button>
+              <ArrowRight size={18} className="archive-arrow" />
             </article>
           ))}
         </div>

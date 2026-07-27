@@ -4,8 +4,8 @@
   "version": "0.0.0",
   "scripts": {
     "dev": "concurrently -k -n API,WEB -c magenta,cyan \"node scripts/py.mjs -m uvicorn app.main:app --reload --app-dir services/api --port 8000\" \"pnpm --dir apps/web dev\"",
-    "build": "npm --prefix apps/web run build",
-    "typecheck": "npm --prefix apps/web run typecheck",
+    "build": "pnpm --dir apps/web run build",
+    "typecheck": "pnpm --dir apps/web run typecheck",
     "test:api": "node scripts/py.mjs -m pytest services/api/tests -q",
     "check:api": "node scripts/py.mjs -m ruff check services/api",
     "db:migrate": "node scripts/py.mjs services/api/scripts/apply_supabase_migrations.py",

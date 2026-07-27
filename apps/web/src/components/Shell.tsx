@@ -1,7 +1,6 @@
 import {
   Archive,
   BarChart3,
-  Bell,
   BookOpen,
   BrainCircuit,
   Compass,
@@ -9,7 +8,6 @@ import {
   LogOut,
   Menu,
   Moon,
-  Search,
   Sun,
   UserPlus,
   X,
@@ -139,11 +137,6 @@ export function Shell({
           <button className="mobile-menu" onClick={() => setMobileOpen(true)}>
             <Menu size={20} />
           </button>
-          <div className="global-search">
-            <Search size={17} />
-            <input placeholder="搜索资料、笔记或错因…" />
-            <kbd>⌘ K</kbd>
-          </div>
           <div className="topbar-actions">
             <button
               className="icon-button"
@@ -152,10 +145,6 @@ export function Shell({
               title={dark ? "白天模式" : "夜间模式"}
             >
               {dark ? <Sun size={18} /> : <Moon size={18} />}
-            </button>
-            <button className="icon-button" aria-label="通知">
-              <Bell size={18} />
-              <span className="notice-dot" />
             </button>
             {userName ? (
               <>

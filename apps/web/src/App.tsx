@@ -70,12 +70,14 @@ function App() {
         setArchive([]);
       }
     });
-    return watchCloudAuth((profile) => {
+    let unsub: (() => void) | undefined;
+    watchCloudAuth((profile) => {
       setUserName(profile?.displayName || "");
       void api.archive().then(setArchive).catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
       });
-    });
+    }).then((fn) => { unsub = fn; });
+    return () => { unsub?.(); };
   }, []);
 
   async function startStudy(materialId: string) {

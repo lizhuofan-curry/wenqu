@@ -40,7 +40,6 @@ export function loadProfile(): LocalProfile | null {
 
 export function saveProfile(profile: LocalProfile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
-  localStorage.setItem(LEGACY_USER_KEY, profile.displayName);
 }
 
 export function loadActiveSession(): Session | undefined {
