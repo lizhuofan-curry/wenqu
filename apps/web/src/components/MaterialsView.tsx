@@ -4,6 +4,7 @@ import {
   Clock3,
   FileSearch,
   FileText,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 import { useRef, useState } from "react";
@@ -14,9 +15,16 @@ type Props = {
   busy: boolean;
   onStart: (id: string) => void;
   onUpload: (file: File) => void;
+  onDelete: (id: string) => void;
 };
 
-export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
+function source_type_label(m: MaterialSummary) {
+  if (m.source_type === "builtin") return "CVPR 2018";
+  if (m.source_type === "pdf") return "PDF";
+  return "MD";
+}
+
+export function MaterialsView({ materials, busy, onStart, onUpload, onDelete }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -91,7 +99,7 @@ export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
               ) : (
                 <FileText size={30} />
               )}
-              <span>{material.source_type === "builtin" ? "CVPR 2018" : "YOUR DOC"}</span>
+              <span>{material.source_type === "builtin" ? "CVPR 2018" : source_type_label(material)}</span>
             </div>
             <div className="library-card-body">
               <div className="material-meta">
@@ -114,6 +122,11 @@ export function MaterialsView({ materials, busy, onStart, onUpload }: Props) {
                 </button>
               </div>
             </div>
+            {material.source_type !== "builtin" && (
+              <button className="card-delete" onClick={(e) => { e.stopPropagation(); onDelete(material.id); }} title="删除材料" aria-label="删除材料">
+                <Trash2 size={15} />
+              </button>
+            )}
           </article>
         ))}
       </div>

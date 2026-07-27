@@ -439,6 +439,7 @@
 
 .material-card,
 .library-card {
+  position: relative;
   overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-card);
@@ -452,6 +453,34 @@
 .archive-card:hover {
   box-shadow: var(--shadow-float);
   transform: translateY(-2px);
+}
+
+.card-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 5;
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink-faint);
+  opacity: 0;
+  transition: opacity 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+}
+
+.library-card:hover .card-delete,
+.material-card:hover .card-delete {
+  opacity: 1;
+}
+
+.card-delete:hover {
+  background: var(--cinnabar-soft);
+  color: var(--cinnabar);
 }
 
 .material-cover,

@@ -7,6 +7,7 @@ The FastAPI app is mounted as an ASGI application.
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import sys
 import uuid
@@ -685,9 +686,53 @@ def debug_info():
     }
 
 
+async def _ai_generate(filename: str, source_text: str) -> dict:
+    """Generate Chinese translation + material-specific questions via DeepSeek.
+    Runs both in a single API call to save time under Vercel's 10s limit."""
+    from openai import OpenAI
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return {}
+    client = OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        timeout=5.0, max_retries=0,
+    )
+    model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+
+    # Trim text for the API call
+    excerpt = source_text[:3000]
+    prompt = json.dumps({
+        "task": "根据以下英文学术材料生成中文翻译和针对性理解题。",
+        "text": excerpt,
+        "requirements": {
+            "sections_translation": "将原文拆为2-3段，每段给出中文翻译（companion_track），保留原文（strict_track）",
+            "questions": "生成3道中文理解题，针对材料的具体内容，不是通用模板。每道含id(q1/q2/q3)/kind(concept/method/evidence)/prompt/hint/source/answer_guide/max_score。用材料中的术语、公式和具体概念",
+            "map_summaries": "为5个地图节点(problem/method/evidence/conclusion/limitations)各生成一个中文摘要，基于材料实际内容"
+        }
+    }, ensure_ascii=False)
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "你是学术材料处理引擎。只输出合法JSON，不用markdown代码块。所有文本用中文。"},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=2000,
+    )
+    raw = resp.choices[0].message.content
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
 @app.post("/api/materials/upload", status_code=201)
 async def upload_material(file: UploadFile):
-    """Upload: extract text from file, build material with real content."""
+    """Upload with dedup + text extraction + AI translation & smart questions."""
     mid = f"upload-{uuid.uuid4().hex[:12]}"
     filename = (file.filename or "untitled")
     title = FilePath(filename).stem
@@ -698,6 +743,12 @@ async def upload_material(file: UploadFile):
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "文件不能超过 10 MB。")
 
+    # --- Duplicate detection (SHA-256 hash of first 1 MB) -----------------
+    content_hash = hashlib.sha256(content[:1024*1024]).hexdigest()
+    for m in store.list_materials():
+        if m.get("_hash") == content_hash and m.get("source_type") == source_type:
+            raise HTTPException(409, f"文件已存在：{m.get('title','')}")
+
     # --- Text extraction --------------------------------------------------
     source_text = ""
     if suffix in {".md", ".markdown"}:
@@ -706,7 +757,6 @@ async def upload_material(file: UploadFile):
         except UnicodeDecodeError:
             source_text = content.decode("latin-1", errors="ignore")[:60000]
     else:
-        # PDF: try pymupdf, fall back to raw text extraction
         try:
             import pymupdf
             doc = pymupdf.open(stream=content, filetype="pdf")
@@ -714,97 +764,95 @@ async def upload_material(file: UploadFile):
             for i, page in enumerate(doc[:30]):
                 pages.append(page.get_text("text"))
             source_text = "\n".join(pages)
-            if len(source_text.strip()) < 50:
-                source_text = ""
-        except ImportError:
-            pass
-        if not source_text:
-            try:
-                decoded = content.decode("latin-1", errors="ignore")
-                parts = []
-                for block in decoded.split("stream\n")[1:]:
-                    if "endstream" in block:
-                        inner = block.split("endstream")[0]
-                        for line in inner.split("\n"):
-                            line = line.strip()
-                            if line.startswith("(") and line.endswith(") Tj"):
-                                parts.append(line[1:-4])
-                            elif line.startswith("[(") and ") TJ" in line:
-                                for seg in line.split("(")[1:]:
-                                    if ")" in seg:
-                                        parts.append(seg.split(")")[0])
-                source_text = " ".join(parts)
-            except Exception:
-                pass
-        if not source_text:
-            source_text = f"[此 PDF 需要 pymupdf 包来提取文本，当前显示为预览模式。请在后端启动的环境中完整解析。]"
+        except Exception:
+            source_text = ""
+        if not source_text or len(source_text.strip()) < 50:
+            source_text = f"[此 PDF 无法提取文本。请确认文件是文字型而非扫描版 PDF。]"
         source_text = source_text[:60000]
 
-    # --- Build sections (split text into chunks for dual-track) -----------
-    text_preview = source_text[:8000] if source_text else f"[文本提取失败，请在后端启动的环境中重新上传。]"
-    text_len = len(source_text)
+    # --- AI generation (non-blocking — if it fails, material still works) ---
+    ai_data = {}
+    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
+    if has_ai and source_text and len(source_text) > 100:
+        try:
+            ai_data = await _ai_generate(filename, source_text)
+        except Exception:
+            pass
 
-    # Split into 2-3 sections at natural breaks
+    # --- Sections (translated if AI succeeded) ----------------------------
+    text_len = len(source_text)
     sections = []
-    if text_len > 2000:
-        parts = []
-        # Try to split on double newlines or "Introduction"/"引言" markers
-        for sep in ["Introduction", "引言", "\n\n\n", "\n\n"]:
-            chunks = [c.strip() for c in text_preview.split(sep) if len(c.strip()) > 100]
-            if len(chunks) >= 2:
-                parts = chunks[:3]
-                break
-        if len(parts) < 2:
-            # Just split evenly
-            third = max(len(text_preview) // 3, 500)
-            parts = [
-                text_preview[:third],
-                text_preview[third:third*2],
-                text_preview[third*2:],
-            ]
-        section_labels = ["开篇与背景", "核心内容", "结论与要点"]
-        for i, part in enumerate(parts[:3]):
+    ai_sections = (ai_data.get("sections_translation") or []) if ai_data else []
+
+    if ai_sections and isinstance(ai_sections, list) and len(ai_sections) >= 2:
+        for i, s in enumerate(ai_sections[:3]):
             sections.append(dict(
-                id=f"s{i+1}", title=section_labels[i] if i < len(section_labels) else f"第{i+1}段",
+                id=f"s{i+1}",
+                title=s.get("title", f"第{i+1}部分"),
                 eyebrow=f"{filename} · 第{i+1}部分",
-                strict_track=part[:3000],
-                companion_track="这段内容来自你上传的材料。阅读时注意：核心问题是什么？关键方法或数据是什么？",
+                strict_track=s.get("strict_track", source_text[:3000])[:3000],
+                companion_track=s.get("companion_track", "")[:2000],
                 source=dict(label="上传文件"),
             ))
+    else:
+        # Fallback: raw text split
+        text_preview = source_text[:8000] if source_text else ""
+        if text_len > 2000:
+            parts = []
+            for sep in ["Introduction", "引言", "\n\n\n", "\n\n"]:
+                chunks = [c.strip() for c in text_preview.split(sep) if len(c.strip()) > 100]
+                if len(chunks) >= 2:
+                    parts = chunks[:3]
+                    break
+            if len(parts) < 2:
+                third = max(len(text_preview) // 3, 500)
+                parts = [text_preview[:third], text_preview[third:third*2], text_preview[third*2:]]
+            for i, part in enumerate(parts[:3]):
+                sections.append(dict(
+                    id=f"s{i+1}", title=["开篇与背景","核心内容","结论与要点"][i],
+                    eyebrow=f"{filename} · 第{i+1}部分",
+                    strict_track=part[:3000],
+                    companion_track="AI 翻译生成中…请稍后刷新重试。",
+                    source=dict(label="上传文件"),
+                ))
 
-    # --- Build map from extracted text ------------------------------------
-    map_items = [
-        dict(key="problem", title="问题与动机",
-             summary=(source_text[:300] + "…") if len(source_text) > 300 else source_text[:300],
-             source=dict(label="材料开头")),
-        dict(key="method", title="方法与设计",
-             summary=(source_text[text_len//5:text_len//5+300] + "…") if text_len > 500 else source_text[:300],
-             source=dict(label="材料中段")),
-        dict(key="evidence", title="证据与结果",
-             summary=(source_text[text_len//2:text_len//2+300] + "…") if text_len > 1000 else source_text[:300],
-             source=dict(label="材料后段")),
-        dict(key="conclusion", title="结论与影响",
-             summary="请根据材料内容，用自己的话概括主要结论及其意义。",
-             source=dict(label="材料结尾")),
-        dict(key="limitations", title="局限与边界",
-             summary="请根据材料内容，指出方法或结论的适用范围和局限性。",
-             source=dict(label="作者讨论")),
-    ]
+    # --- Map summaries (AI or generic) ------------------------------------
+    ai_map = (ai_data.get("map_summaries") or {}) if ai_data else {}
+    map_keys = ["problem", "method", "evidence", "conclusion", "limitations"]
+    map_titles = ["问题与动机", "方法与设计", "证据与结果", "结论与影响", "局限与边界"]
+    map_items = []
+    for key, mtitle in zip(map_keys, map_titles):
+        summary = ai_map.get(key, "") if isinstance(ai_map, dict) else ""
+        if not summary:
+            summary = source_text[:200] if key == "problem" else "阅读材料后自行总结"
+        map_items.append(dict(key=key, title=mtitle, summary=summary, source=dict(label="上传文件")))
 
-    questions = [
-        dict(id="q1", kind="concept",
-             prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
-             hint="关注开篇的问题陈述和研究动机。",
-             source=dict(label="材料开头"), answer_guide="准确描述研究问题和动机。", max_score=4),
-        dict(id="q2", kind="method",
-             prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
-             hint="关注方法部分的具体步骤和公式（如有）。",
-             source=dict(label="材料方法部分"), answer_guide="准确描述方法的关键步骤。", max_score=4),
-        dict(id="q3", kind="evidence",
-             prompt="作者得到了什么结论？有什么证据支持，又有哪些局限性？",
-             hint="区分论文结论和你自己的推断。",
-             source=dict(label="材料结论部分"), answer_guide="指出结论、证据和局限。", max_score=3),
-    ]
+    # --- Smart questions (AI or generic) ------------------------------------
+    ai_questions = ai_data.get("questions", []) if ai_data else []
+    if ai_questions and isinstance(ai_questions, list) and len(ai_questions) >= 3:
+        questions = []
+        for q in ai_questions[:3]:
+            questions.append(dict(
+                id=q.get("id", f"q{len(questions)+1}"),
+                kind=q.get("kind", "concept"),
+                prompt=q.get("prompt", "请根据材料内容回答。"),
+                hint=q.get("hint", ""),
+                source=dict(label="上传文件", detail=q.get("source","")),
+                answer_guide=q.get("answer_guide", ""),
+                max_score=q.get("max_score", 4),
+            ))
+    else:
+        questions = [
+            dict(id="q1", kind="concept", prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
+                 hint="关注开篇的问题陈述和研究动机。", source=dict(label="材料开头"),
+                 answer_guide="准确描述研究问题和动机。", max_score=4),
+            dict(id="q2", kind="method", prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
+                 hint="关注方法部分的具体步骤。", source=dict(label="材料方法部分"),
+                 answer_guide="准确描述方法的关键步骤。", max_score=4),
+            dict(id="q3", kind="evidence", prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
+                 hint="区分论文结论和你自己的推断。", source=dict(label="材料结论部分"),
+                 answer_guide="指出结论、证据和局限。", max_score=3),
+        ]
 
     material = dict(
         id=mid, title=title,
@@ -815,23 +863,34 @@ async def upload_material(file: UploadFile):
         learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
         sections=sections,
         questions=questions,
+        _hash=content_hash,
     )
     store.seed_senet(material)
 
-    # Chunk + embed for RAG evaluation (async, non-blocking on error)
+    # RAG chunks
     try:
         chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
         if chunk_texts:
             embeddings = await _embed_texts(chunk_texts)
             if embeddings:
-                store.set_chunks(mid, [
-                    {"text": ct, "embedding": emb}
-                    for ct, emb in zip(chunk_texts, embeddings)
-                ])
+                store.set_chunks(mid, [{"text": ct, "embedding": emb} for ct, emb in zip(chunk_texts, embeddings)])
     except Exception:
         pass
 
     return material
+
+
+@app.delete("/api/materials/{material_id}")
+def delete_material(material_id: str):
+    """Delete an uploaded material (not built-in SENet)."""
+    if material_id == "senet-cvpr-2018":
+        raise HTTPException(403, "内置材料不可删除。")
+    m = store.get_material(material_id)
+    if m is None:
+        raise HTTPException(404, "材料不存在。")
+    store._materials.pop(material_id, None)
+    store._chunks.pop(material_id, None)
+    return {"deleted": material_id}
 
 
 class CreateSessionRequest(BaseModel):

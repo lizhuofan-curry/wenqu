@@ -278,4 +278,6 @@ export const api = {
       body: form,
     });
   },
+  deleteMaterial: (id: string) =>
+    request<{ deleted: string }>(`/materials/${id}`, { method: "DELETE" }),
 };

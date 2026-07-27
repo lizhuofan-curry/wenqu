@@ -226,6 +226,13 @@ function App() {
           busy={busy}
           onStart={(id) => void startStudy(id)}
           onUpload={(file) => void upload(file)}
+          onDelete={(id) => {
+            void api.deleteMaterial(id).then(() => {
+              setMaterials((prev) => prev.filter((m) => m.id !== id));
+            }).catch((reason: unknown) => {
+              setError(reason instanceof Error ? reason.message : "删除失败。");
+            });
+          }}
         />
       )}
       {view === "insights" && (
