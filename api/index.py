@@ -22,6 +22,7 @@ if project_root not in sys.path:
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -302,8 +303,112 @@ def evaluate_senet(response: dict) -> dict:
     )
 
 
+# --- AI-powered evaluation (DeepSeek) ------------------------------------------
+
+# Lightweight response schemas for structured JSON output
+class AIQuestionResult(BaseModel):
+    question_id: str
+    score: int = Field(ge=0)
+    max_score: int = Field(ge=0)
+    verdict: str  # "掌握" | "部分掌握" | "需要回看"
+    feedback: str
+    misconception_tags: list[str] = Field(default_factory=list)
+
+
+class AIRetellingResult(BaseModel):
+    score: int = Field(ge=0)
+    max_score: int = Field(ge=0)
+    feedback: str
+    misconception_tags: list[str] = Field(default_factory=list)
+
+
+class AIEvaluationResult(BaseModel):
+    mastery: int = Field(ge=0, le=100)
+    headline: str
+    question_results: list[AIQuestionResult]
+    retelling: AIRetellingResult
+    misconception_tags: list[str]
+
+
+async def evaluate_with_deepseek(
+    questions: list[dict],
+    answers: list[dict],
+    retelling: str,
+) -> dict:
+    """Call DeepSeek (via OpenAI-compatible SDK) to evaluate answers semantically."""
+    from openai import OpenAI
+
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
+    model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+
+    if not api_key:
+        raise RuntimeError("DEEPSEEK_API_KEY not configured")
+
+    client = OpenAI(api_key=api_key, base_url=base_url)
+
+    # Build questions context (without revealing full answer_guide verbatim —
+    # give enough for evaluation but keep the scoring rubric)
+    question_context = []
+    for q in questions:
+        question_context.append(dict(
+            id=q["id"],
+            prompt=q["prompt"],
+            rubric=q.get("answer_guide", ""),
+            max_score=q.get("max_score", 4),
+        ))
+
+    schema = json.dumps(AIEvaluationResult.model_json_schema(), ensure_ascii=False)
+
+    prompt = json.dumps({
+        "task": (
+            "你是「问渠」的 AI 学习诊断器。根据评分依据逐题评估学习者的回答。"
+            "每道题给出 0 到 max_score 的整数得分、判决（掌握/部分掌握/需要回看）、"
+            "具体反馈和错因标签（空列表表示无错因）。"
+            "复述评估考察是否覆盖材料的关键步骤（Squeeze/Excitation/Scale/ResNet 插入位置）。"
+            "综合掌握度 mastery 是总分/总满分×100 的整数百分比。"
+            "headline 是一句简短总结（如「你对 SE 三阶段理解扎实，但 residual 位置可以更准」）。"
+            "所有反馈必须用中文，引用原文证据时标注页码或公式编号。"
+        ),
+        "material_title": "Squeeze-and-Excitation Networks (CVPR 2018)",
+        "questions": question_context,
+        "answers": [dict(question_id=a.get("question_id",""), response=a.get("response","")) for a in answers],
+        "retelling": retelling,
+    }, ensure_ascii=False)
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "你是一个严格但善意的学习诊断器。只输出一个合法 JSON 对象，"
+                    "不要用 Markdown 代码块包裹。\n"
+                    f"JSON Schema:\n{schema}"
+                ),
+            },
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=4000,
+    )
+
+    content = response.choices[0].message.content
+    if not content:
+        raise RuntimeError("DeepSeek returned empty response")
+
+    parsed = AIEvaluationResult.model_validate_json(content)
+
+    return dict(
+        mastery=parsed.mastery,
+        headline=parsed.headline,
+        question_results=[qr.model_dump() for qr in parsed.question_results],
+        retelling=parsed.retelling.model_dump() | {"misconception_tags": parsed.retelling.misconception_tags},
+        misconception_tags=parsed.misconception_tags,
+    )
+
+
 # --- Pydantic request/response models ----------------------------------------
-from pydantic import BaseModel, Field
 
 class EvaluationRequest(BaseModel):
     answers: list[dict] = Field(default_factory=list)
@@ -390,14 +495,27 @@ def create_session(req: SessionCreate):
 
 
 @app.post("/api/sessions/{session_id}/evaluate")
-def evaluate_session(session_id: str, req: EvaluationRequest):
+async def evaluate_session(session_id: str, req: EvaluationRequest):
     s = store.get_session(session_id)
     if s is None:
         # Cold start: session was lost. Auto-create it so scoring can proceed.
         s = store.create_session(session_id, "senet-cvpr-2018", "huangfeng")
     if s["status"] == "completed":
         raise HTTPException(409, "该学习会话已经完成。")
-    result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+
+    material = store.get_material(s.get("material_id", "senet-cvpr-2018"))
+    questions = (material or {}).get("questions", [])
+    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
+
+    if has_ai and questions:
+        try:
+            result = await evaluate_with_deepseek(questions, req.answers, req.retelling)
+        except Exception:
+            # AI failed — silently fall back to rules
+            result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+    else:
+        result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+
     return store.complete_session(
         session_id,
         [dict(question_id=a.get("question_id",""), response=a.get("response","")) for a in req.answers],

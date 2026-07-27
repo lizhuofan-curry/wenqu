@@ -1,2 +1,3 @@
 fastapi>=0.116,<1
+openai>=1.100,<3
 python-dotenv>=1.1,<2
