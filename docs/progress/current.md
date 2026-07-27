@@ -106,6 +106,59 @@
 ### 涉及文件
 `lib/cloud.ts`（重写）, `components/Shell.tsx`, `components/ArchiveView.tsx`, `components/MaterialsView.tsx`, `lib/storage.ts`, `App.tsx`, `package.json`, `.env.example`, `vercel.json`
 
+## 2026-07-27｜Vercel 后端部署 + DeepSeek API 配置 + 生产站修复 ✅
+
+### 背景
+评审三批（A/B/C）全部完成后，生产站功能正常但评分逻辑仍是内置演示数据（永远 72%），且无后端评分。用户希望实现真实 AI 驱动的评分，同时修复体验问题。
+
+### 后端部署过程
+1. **创建 Vercel Python Serverless Function**：新建 `api/index.py`（FastAPI）和 `api/requirements.txt`。核心思路：轻量无状态，SENet 内置材料 seed 到内存 store，scoring 用纯 Python 规则引擎（不依赖 pymupdf/openai 重型包），不支持的文件上传/OCR 暂不部署。
+2. **路由修复**：初始部署后 API 404，根因是 Vercel 的 rewrites 不自动把 `/api/*` 子路径映射到函数。在 `vercel.json` 新增 `routes` 数组，`/api/(.*)` → `/api/index`，在 rewrites 之前执行。
+3. **数据完整性问题**：初版 `get_material` 只返回摘要字段，StudyFlow 需要 map/sections/questions/learning_goals 完整数据 → 补全 `SENET_MATERIAL` dict 内联所有学习内容。
+4. **档案消失问题**：API 的 `/api/archive` 返回空数组（200 OK），不是错误 → `withDemo` 不触发 catch → Supabase 兜底被短路 → 用户看到空档案。修复：删除 API 的 archive 端点，返回 404 触发前端 fallback 到 Supabase `loadCloudArchive()`。
+
+### 创新与变化
+
+**架构创新**：
+- **首次实现前后端同域部署**：之前前后端分离（前端 Vercel/Pages，后端本地 FastAPI）。现在 `api/index.py` + `vercel.json routes` 让 Python 函数和 React SPA 在同一域名下协同——这是 Vercel 混合部署模式（前端静态 + 后端 serverless）。
+- **Serverless 评分引擎**：将 `evaluate_senet` 规则评分逻辑从本地 SQLite 后端移植到 Vercel 无状态函数中。不需要数据库，不需要 AI 调用，冷启动即可评分。
+- **双站点策略**：Vercel 站 = 真实 API（`VITE_DEMO_MODE` 不设），GitHub Pages = 纯静态演示模式（`VITE_DEMO_MODE=true` 编译）。同一套代码，编译时环境变量控制行为。
+
+**体验变化**：
+| 之前 | 之后 |
+|---|---|
+| 评分永远 72% | 按关键词动态打分，对错反映实际回答 |
+| 掌握度假数据 | 每道题独立评分，错因标签动态生成 |
+| 红色降级条 | 无条（后端健康） |
+| 金色演示条 | Vercel 无、Pages 有（分别适配合适模式） |
+| 档案死按钮 | 点击展开复述内容 |
+| 顶栏左搜索框/通知铃 | 删除冗余元素，导航右对齐 |
+| 复习入口硬编码 `materials[0]` | 从最近档案自动推导 material_id |
+
+**包体积变化**：
+| 阶段 | JS 大小 |
+|---|---|
+| 评审批次 A 之前 | ~467 kB（supabase-js 静态导入） |
+| 批次 C 之后 | ~253 kB（`import()` 懒加载） |
+| 加上 Python API 后 | 前端 ~254 kB + 后端 ~1 kB（纯规则） |
+
+### 遇到的困难与解决
+1. **Vercel routes vs rewrites 陷阱**：详见 lessons-learned #23。
+2. **VITE_DEMO_MODE 缓存不生效**：详见 lessons-learned #24。
+3. **API 空数组遮蔽 Supabase**：详见 lessons-learned #25。
+4. **GitHub 推送被墙**：git 连 github.com:443 超时，Vercel CLI 走独立通道部署。详见 lessons-learned #28。
+5. **DeepSeek API Key**：用户通过 `vercel env add` 安全注入到 Vercel 环境变量，后端 `config.py` 从 `os.getenv("DEEPSEEK_API_KEY")` 读取——密钥不进 Git、不出现聊天记录、不打日志。
+
+### 验证结果
+- TypeScript：零错误
+- Vite build：通过（JS 254 kB / gzip 81.7 kB + Python chunk 214 kB）
+- Vercel 部署：`dpl_G6YmsB9tdsDhkeNpx3Ffdjqe3SjC` → READY
+- 跨设备验收：手机注册 → 学习 → 电脑登录同一账号 → 档案/掌握度/复述同步 ✅
+- API 验证：`/api/health` 返回 `ai_configured=true, ai_provider=deepseek, model=deepseek-v4-flash`（虽未实际调用，但密钥已配置）
+
+### 涉及文件
+`api/index.py`（新）, `api/requirements.txt`（新）, `vercel.json`, `apps/web/src/components/ArchiveView.tsx`, `apps/web/src/styles/pages.css`
+
 ## 2026-07-27｜当前对话已整理导出
 
 - 已将本轮从产品规划、SENet 首版、云端账号到 v.3 前端改版的主要对话整理为 Markdown；
@@ -170,7 +223,7 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 
 ## 当前阶段
 
-**阶段：v.3 纸上书房前端完成，云端账号已上线，进入生产发布与跨设备验收**
+**阶段：v.3「纸上书房」+ 真实后端评分已上线，进入 DeepSeek AI 调用与首轮用户测试**
 
 ```text
 [x] 产品架构与产品设计
@@ -196,6 +249,11 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 [x] Supabase 真实账号、RLS 与云端学习记录
 [x] 方案 A「纸上书房」双主题前端
 [x] 桌面 / 手机自动化视觉回归与原型归档
+[x] 前端代码评审 A/B/C 三批 14 项全部修复
+[x] Vercel Python Serverless 后端在线评分
+[x] DeepSeek API Key 已安全注入生产环境
+[x] 跨设备数据同步验收（手机→电脑档案互通）
+[ ] 真实 DeepSeek AI 评分调用（非纯规则）
 [ ] 邀请第一位真实学习者
 [ ] 邀请首位项目共创者
 [ ] 完成 5 人首轮学习测试
@@ -365,52 +423,33 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 
 ## 当前已知限制
 
-- 未登录状态仍使用当前浏览器本地记录；登录后才会同步到 Supabase；
-- 修复发布前、尚未接入 Supabase 时完成的手机练习无法从旧页面内存补取；
-- v.3 视觉改版已合并 PR #19 并发布到 Vercel；
-- DeepSeek 接入代码已完成，但尚未安全配置用户的 `DEEPSEEK_API_KEY`；
-- FastAPI 本地回退仍使用 SQLite；生产账号与学习记录已由 Supabase RLS 按用户隔离；
+- 生产后端评分仍是规则引擎（关键词匹配），尚未接入 DeepSeek AI 真实调用；
+- DeepSeek API Key 已配好但 `evaluate_senet`（SENet 材料）走纯规则，非 SENet 材料走 `evaluate_with_ai`（需 AI），后者是下一阶段目标；
+- Serverless 内存存储意味着同一用户两次冷启动之间的学习会话不互通（但结束后写入 Supabase 档案即可）
 - v.0 只支持有文本层的 PDF，不支持扫描件 OCR；
 - 自动测试出现一条来自 FastAPI TestClient 依赖的弃用警告，不影响当前测试；
-- 尚未完成集中数据落库、真实学习者测试、隐私协议和应用商店合规。
+- 尚未完成 5 人首轮真实学习者测试、隐私协议和应用商店合规。
 
 ## 接下来自动进行
 
-### P0｜建立可远程查看的真实数据链路
+### P0｜稳定生产运行
+1. 确认 Vercel 站 `wenqu-reading-room.vercel.app` 评分、档案、跨设备同步均正常；
+2. 监控 API 冷启动延迟和错误率；
+3. GitHub 推送恢复后同步剩余提交。
 
-1. 选择并接入生产数据库与身份认证；
-2. 将账户、学习会话、答案、复述和诊断按用户隔离存储；
-3. 增加项目方可查看的匿名测试记录后台；
-4. 增加隐私说明、退出登录和数据删除；
-5. 完成跨手机与电脑的数据同步验收。
-
-### P1｜安全启用 DeepSeek
-
-1. 在本地和部署平台安全添加 `DEEPSEEK_API_KEY`；
-2. 调用健康检查确认提供商与模型；
-3. 上传短 Markdown 完成第一次真实生成；
-4. 验证所有诊断引用都能回到原材料；
-5. 加入单次调用限制和费用保护。
+### P1｜真实 DeepSeek AI 评分
+1. 后端 `evaluate_session` 中 SENet 走规则，非 SENet 走 `evaluate_with_ai`（调用 DeepSeek API）；
+2. 验证结构化输出（Pydantic 二次校验）和证据引用；
+3. 加入调用频率和费用保护。
 
 ### P2｜首轮真实用户验证
-
 1. 邀请第一位目标学习者完成 SENet；
 2. 记录完成时间、退出点、题目答案和复述；
 3. 检查用户是否认可系统指出的误解；
-4. 使用 `docs/research/senet/learning-pack/04-user-test.md` 记录结果；
-5. 完成 5 人测试后决定 v.1 的优先级。
+4. 完成 5 人测试后决定下一阶段优先级。
 
-### P3｜建立朋友共创流程
-
-1. 确认朋友的 GitHub 用户名；
-2. 从仓库 `Settings → Collaborators` 发出协作者邀请；
-3. 约定功能改动通过独立分支和 Pull Request 提交；
-4. 使用 GitHub Issues 记录需求、缺陷和产品讨论；
-5. 为首次共创补充贡献指南、Issue 模板和 Pull Request 模板。
-
-### P4｜准备上架级测试环境
-
-1. 将 FastAPI、前端和持久化存储拆成可部署配置；
-2. 增加生产环境变量、健康检查和日志；
-3. 增加最小隐私提示与数据删除入口；
-4. 发布封闭测试链接，不直接进入应用商店公开上架。
+### P3｜朋友共创与上架准备
+1. 邀请朋友成为 GitHub 协作者；
+2. 使用分支、Issue 和 Pull Request 协作；
+3. 增加贡献指南和模板；
+4. 完成隐私说明、数据删除、日志与生产监控。

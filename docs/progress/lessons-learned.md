@@ -179,3 +179,47 @@
 - 根因：`C:\Users\Lenovo\AppData\Local\Temp\pytest-of-Lenovo` 由另一个 Windows 用户进程创建，当前沙箱账户无权读取。
 - 解决：单独运行 1 个不依赖 tmp_path 的测试（如健康检查）可正常通过，证明代码无回归；完整测试需要清理 Temp 目录或使用统一账户运行。
 - 预防：pytest 报 PermissionError 且堆栈指向 `os.scandir(root)` 时，先检查 `Temp\pytest-of-*` 目录的所有者；不要因为环境阻塞标记代码问题。
+
+## 2026-07-27｜Vercel 后端部署与真实评分上线
+
+### 23. Vercel 路由规则优先级：routes 先于 rewrites 执行
+
+- 现象：部署了 `api/index.py` Python Serverless Function，前端请求 `/api/health` 等子路径全部 404，因为 `rewrites` 只会排除 `/api/` 前缀（SPA 不回退），但不会把子路径路由到函数。
+- 根因：Vercel 的 `rewrites` 和 `routes` 是不同阶段。在 `vercel.json` 顶层加 `routes` 数组，用 `{"src": "/api/(.*)", "dest": "/api/index"}` 把 API 子路径全部映射到 Python 入口。routes 在 rewrites 之前执行。
+- 解决：在 vercel.json 中新增 `routes` 数组，同时保留 `rewrites` 的 `api/` 排除，确保 `/api/*` 先被 Python 函数接管，剩余请求由 SPA 回退处理。
+- 预防：部署 Vercel Python 函数时，第一件事就是加上 routes 映射——不要假设 FastAPI 子路径会自动匹配到 `api/index.py`。
+
+### 24. VITE_DEMO_MODE 环境变量需配合 Vite 编译时注入，缓存可能导致陈旧值
+
+- 现象：在 Vercel Dashboard 设置 `VITE_DEMO_MODE=true` 后部署，前端仍显示红色降级条（非演示模式），即使强制无缓存重建后仍不生效。
+- 根因：Vite 在编译时通过 `import.meta.env.VITE_*` 读取环境变量，该值在构建时注入产物中。`--force` 跳过的是本地 Docker 缓存，但 `pnpm build` 的 Vite 编译层可能仍有增量缓存。加上 `--force` 后仍然读到旧值，因为 Vercel 的构建环境变量传递时序可能与预期不同。
+- 解决：先通过 `vercel env add VITE_DEMO_MODE production --value "true"` 在 Vercel 平台层面设置，再用 `--force` 强制重建。若仍不生效，直接删变量改走真实 API 路由——恰好后续部署了后端，不需要演示模式。GitHub Pages 用 `VITE_DEMO_MODE=true pnpm build` 本地编译后推 gh-pages。
+- 预防：Vite 的 `import.meta.env` 变量在 CI/CD 中要区分编译时和运行时。Vercel 的 env var 在构建阶段可读，但缓存命中时不会重新读取。环境变量变更后务必用 `--force` 且确认构建日志中确实出现了新的 `import.meta.env` 替换值。
+
+### 25. 部署真实后端后，API 返回空数组（200 OK）会遮蔽前端 Supabase 兜底
+
+- 现象：后端 API `GET /api/archive` 返回 `[]`（空数组，HTTP 200），前端 `withDemo()` 不触发 catch，`loadCloudArchive() ?? loadLocalArchive()` 兜底被短路，用户看到空档案——但实际上 Supabase 里有两条真实记录。
+- 根因：`withDemo` 只 catch 抛出的错误（网络不通、4xx/5xx）。API 成功返回了空数据（正经 200），JavaScript 层面无错误可捕获。前端代码 `(await loadCloudArchive()) ?? loadLocalArchive()` 只在 API 抛错时执行。
+- 解决：删除 API 的 `/api/archive` 端点。前端请求此端点时 FastAPI 返回 404 → `request()` 抛 `ApiError` → `withDemo` 捕获 → `degraded = true` → 走 `loadCloudArchive() ?? loadLocalArchive()` → 从 Supabase 读出真实档案。这个方案虽然会触发降级条，但数据正确性优先于 UI 美观。后续可以让前端直接跳过 API、从 Supabase 读档案彻底解决。
+- 预防：前端 `withDemo` 模式无法区分"后端挂了"和"后端故意返回空"。设计 API 时，对于可以从 Supabase 本地获取的数据（如 archive），不要让 API 假装自己有答案；要么透传 Supabase 数据，要么不提供该端点。
+
+### 26. Serverless 内存存储在跨请求间共享（同一实例），但在冷启动时清空
+
+- 现象：Vercel Python 函数用 `MemStore`（类内 dict）存储 materials/sessions/archive。同一实例内多次请求共享数据（正常），但冷启动后数据全部丢失。
+- 根因：Vercel Serverless Functions 按需创建实例并保持一段时间（warm），但无请求时会回收。Python 进程级变量不跨实例共享，也不持久化。
+- 解决：内置的 SENet material 在模块加载时 seed 到 MemStore（每次冷启动都会执行，所以新材料永远可用）。session 只在一次学习流程内有效（几分钟），不需要跨冷启动持久化。archive 端点已删除，记录走 Supabase。
+- 预防：Serverless 中永远不要假设"上一次请求写入的数据这次还能读到"。需要持久化的数据（用户档案、学习记录）走 Supabase；只需临时状态（当前学习会话）可以放内存。
+
+### 27. 同一域名下前端 SPA + 后端 API 的组合部署需要精确的路由分层
+
+- 现象：部署初期经历了三种错误状态——①红色降级条（所有 API 404，未达到函数）、②陪读点不开（API 通了但返回数据不完整）、③档案消失（API 返回空数组遮蔽 Supabase）。
+- 根因：这三类问题分别对应路由、数据格式、兜底逻辑三个层面，彼此独立但用户看到的是一个整体结果。每次修复一层才暴露下一层的问题。
+- 解决：分三步修复——① vercel.json 加 `routes` 映射、② `api/index.py` 补全完整 SENet 学习内容（map/sections/questions）、③ 删除 archive 端点让前端走 Supabase。
+- 预防：同域部署前后端时，先把 API 关键端点（/api/health、/api/materials、/api/personas）逐个 curl 验证，再打开前端验收 UI。三层（路由 → 数据 → 兜底）逐层确认比一把索哈高效。
+
+### 28. 修复前端生产 bug 时可以在推送到 GitHub 之前先用本地部署验证
+
+- 现象：GitHub git 推送被墙（github.com:443 不可达），但 Vercel CLI 走 api.vercel.com（不同的 CDN 节点），可以正常部署。推送阻塞时，如果等网络恢复再部署，用户会多等很久。
+- 根因：git 传输走 github.com:443，Vercel CLI 上传走 vercel.com 的不同 IP。
+- 解决：Vercel CLI 的 `vercel --prod` 不依赖 GitHub——它把本地文件直接上传到 Vercel 构建服务，与 git push 完全独立。在 git 不通时优先走这条路。
+- 预防：git 推送失败时不要等待，直接用 `npx vercel --prod --yes` 部署。等网络恢复后再补推送和合并，两条线互不阻塞。
