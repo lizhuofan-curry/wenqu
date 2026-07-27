@@ -245,6 +245,20 @@
 - 解决：建立 iron rule：代码改完后三步走——`git push origin main` + `npx vercel --prod --yes` + `git push origin gh-pages --force`（GitHub Pages 需要手动推构建产物）。
 - 预防：写进记忆和进度文档。每次回复模板中最后一句永远是部署状态。
 
+### 33. Context Stuffing vs RAG 是评分速度和准确度的关键 tradeoff
+
+- 现象：DeepSeek 评分调用耗时接近 Vercel 10s 超时边缘，用户等待体验差。每次评分把完整材料上下文（2-3 KB）塞进 prompt。
+- 根因：evaluation 用 context stuffing——把材料全部 sections 发给 DeepSeek。模型需先"阅读理解"再打分，大量 token 用于理解而非判断。
+- 解决：引入 RAG——上传时 `_chunk_text()` 400 字重叠切分，`_embed_texts()` DeepSeek Embedding API 向量化存 MemStore。评分时嵌入用户回答为查询，余弦相似度取 top-4 片段，只发给 DeepSeek 这 4 段。prompt 从 3 KB 缩到 ~1 KB，速度预期提升 3-5x。
+- 预防：凡是 AI 处理大段文本，优先检索再回答（RAG），而不是一次性喂给模型（context stuffing）。上传时多花几秒 embed 是值得的。
+
+### 34. Vercel Serverless 不适合大型向量数据库
+
+- 现象：chunks+embeddings 存在内存 dict，冷启动清空后需重新 embed。
+- 根因：Vercel 函数无持久化磁盘、无 GPU、无向量数据库。
+- 解决：当前 MVP 可接受——SENet 冷启动 embed 成本低（10 秒内），上传材料同步 embed。后续生产应持久化到 Supabase pgvector 或 Pinecone。
+- 预防：Serverless 里不做"实时 embedding 检索大量文档"——那是专用向量数据库的场景。MVP 只 embed 1-2 份当前材料。
+
 ### 30. Pydantic 模型重复导入导致 Vercel 函数启动变慢
 
 - 现象：`api/index.py` 在顶部和中间都引用了 `from pydantic import BaseModel, Field`。
