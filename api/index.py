@@ -345,7 +345,7 @@ async def evaluate_with_deepseek(
     if not api_key:
         raise RuntimeError("DEEPSEEK_API_KEY not configured")
 
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=8.0, max_retries=1)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=5.0, max_retries=0)
 
     # Build questions context (without revealing full answer_guide verbatim —
     # give enough for evaluation but keep the scoring rubric)
@@ -358,39 +358,21 @@ async def evaluate_with_deepseek(
             max_score=q.get("max_score", 4),
         ))
 
-    schema = json.dumps(AIEvaluationResult.model_json_schema(), ensure_ascii=False)
-
-    prompt = json.dumps({
-        "task": (
-            "你是「问渠」的 AI 学习诊断器。根据评分依据逐题评估学习者的回答。"
-            "每道题给出 0 到 max_score 的整数得分、判决（掌握/部分掌握/需要回看）、"
-            "具体反馈和错因标签（空列表表示无错因）。"
-            "复述评估考察是否覆盖材料的关键步骤（Squeeze/Excitation/Scale/ResNet 插入位置）。"
-            "综合掌握度 mastery 是总分/总满分×100 的整数百分比。"
-            "headline 是一句简短总结（如「你对 SE 三阶段理解扎实，但 residual 位置可以更准」）。"
-            "所有反馈必须用中文，引用原文证据时标注页码或公式编号。"
-        ),
-        "material_title": "Squeeze-and-Excitation Networks (CVPR 2018)",
+    prompt = {
+        "task": "作为问渠诊断器，根据评分依据评估学习者的三道 SENet 题目的回答和复述。用中文。",
         "questions": question_context,
-        "answers": [dict(question_id=a.get("question_id",""), response=a.get("response","")) for a in answers],
+        "answers": [{"question_id": a.get("question_id",""), "response": a.get("response","")} for a in answers],
         "retelling": retelling,
-    }, ensure_ascii=False)
+    }
 
     response = client.chat.completions.create(
         model=model,
         messages=[
-            {
-                "role": "system",
-                "content": (
-                    "你是一个严格但善意的学习诊断器。只输出一个合法 JSON 对象，"
-                    "不要用 Markdown 代码块包裹。\n"
-                    f"JSON Schema:\n{schema}"
-                ),
-            },
-            {"role": "user", "content": prompt},
+            {"role": "system", "content": "你是严格但善意的学习诊断器。只输出合法 JSON，不用 Markdown 代码块。返回 mastery (0-100 整数)、headline (中文一句总结)、question_results (每道题 score/verdict/feedback/misconception_tags)、retelling (score/feedback/misconception_tags)、misconception_tags。"},
+            {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         response_format={"type": "json_object"},
-        max_tokens=2000,
+        max_tokens=1500,
     )
 
     content = response.choices[0].message.content
