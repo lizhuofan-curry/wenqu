@@ -212,7 +212,7 @@
   display: flex;
   height: 68px;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: 22px;
   padding: 0 clamp(24px, 4vw, 58px);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
