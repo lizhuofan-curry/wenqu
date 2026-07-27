@@ -4,9 +4,15 @@
   "installCommand": "pnpm install --frozen-lockfile",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/index"
+    }
+  ],
   "rewrites": [
     {
-      "source": "/((?!assets/|api/|favicon.svg).*)",
+      "source": "/((?!assets/|favicon.svg).*)",
       "destination": "/index.html"
     }
   ]
