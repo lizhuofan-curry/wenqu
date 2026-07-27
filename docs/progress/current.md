@@ -127,6 +127,17 @@
 ### 涉及文件
 `api/index.py`, `api/requirements.txt`
 
+## 2026-07-27｜AI 上传材料生成 + 超时兜底优化 ✅
+
+- **上传材料支持**：新增 `POST /api/materials/upload` 端点，支持 PDF/Markdown 文本提取 → DeepSeek AI 自动生成完整学习包（map/sections/questions/learning_goals）
+- **超时优化**：DeepSeek 评分超时从 8s 缩到 5s，`max_retries=0`，超时立即退回规则评分
+- **前端兜底修复**：演示模式下非 SENet 材料不再返回假数据，改为占位提示；上传材料评分失败时显示具体错误
+- **加载动画**：提交复述后全屏遮罩 + 三点跳动 + 进度指示器，减少等待无聊感
+- **非 SENet 材料评分**：上传材料的评分全部走 DeepSeek AI（无关键词兜底），失败时报 502 而非假数据
+
+### 涉及文件
+`api/index.py`, `apps/web/src/lib/api.ts`, `apps/web/src/components/StudyFlow.tsx`, `apps/web/src/styles/study.css`
+
 ## 2026-07-27｜Vercel 后端部署 + DeepSeek API 配置 + 生产站修复 ✅
 
 ### 背景

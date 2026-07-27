@@ -231,6 +231,20 @@
 - 解决：openai Python SDK 默认超时 600 秒，但 Vercel 函数本身在 10 秒后被 kill。不加额外超时配置；如果 DeepSeek 超时，会被 Python 异常捕获 → 回退到 `evaluate_senet` 规则引擎。反直觉但正确：AI 失败不影响用户打分。
 - 预防：所有 AI 调用都用 try/except 包裹，失败时退回确定性规则。永远不给用户看到「AI 超时」错误。费用保护：每次调用 `max_tokens=4000`，按 DeepSeek 当前价格（~0.5 元/百万 token），单次评分成本约 0.002 元，几乎可忽略。
 
+### 31. 演示模式兜底返回 SENet 内容，导致上传材料点开后仍是 SENet 题目
+
+- 现象：用户上传了新的 PDF，资料列表中出现该材料，但点击进入后题目、地图、学习段全是 SENet 的内容。
+- 根因：多维兜底链——前端 `withDemo` 中 `api.material(id)` 兜底是 `{ ...demoMaterial, id }`，把上传材料的 ID 替换到了 SENet 内容的壳上。API 没有实现在线材料生成端点，当前端请求 `/api/materials/upload-xxx` 时返回 404，被 withDemo 兜底成 SENet 数据。
+- 解决：两步走——① API 新增 `/api/materials/upload` 端点，文本提取 + DeepSeek AI 生成完整学习包（map、sections、questions）；② 前端兜底做 ID 判断，非 SENet 的 ID 返回占位材料（含提示文字）而非假数据。
+- 预防：withDemo 模式默认容易隐藏数据真实性 bug。凡是涉及用户数据的兜底（材料、档案、评分），都应在兜底逻辑中区分「我知道这个 ID」和「我不知道这个 ID」，后者要么抛错、要么显式标记为占位数据。
+
+### 32. 每轮改代码后不部署导致用户看到的是旧内容
+
+- 现象：多次 git push 后用户反映「还是没变」，因为只推了 GitHub 没跑 Vercel deploy。
+- 根因：思维惯性——以为 git push = 上线，但其实 Vercel + GitHub Pages 都不会自动从 main 分支部署（本项目的 GitHub 连接未设自动部署）。Git 推送和 Vercel deploy 是两个独立动作。
+- 解决：建立 iron rule：代码改完后三步走——`git push origin main` + `npx vercel --prod --yes` + `git push origin gh-pages --force`（GitHub Pages 需要手动推构建产物）。
+- 预防：写进记忆和进度文档。每次回复模板中最后一句永远是部署状态。
+
 ### 30. Pydantic 模型重复导入导致 Vercel 函数启动变慢
 
 - 现象：`api/index.py` 在顶部和中间都引用了 `from pydantic import BaseModel, Field`。
