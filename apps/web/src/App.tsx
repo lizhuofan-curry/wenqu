@@ -81,12 +81,12 @@ function App() {
     return () => { unsub?.(); };
   }, []);
 
-  async function startStudy(materialId: string) {
+  async function startStudy(materialId: string, preloaded?: Material) {
     setBusy(true);
     setError("");
     try {
       const [nextMaterial, nextSession] = await Promise.all([
-        api.material(materialId),
+        preloaded ? Promise.resolve(preloaded) : api.material(materialId),
         api.createSession(materialId, selectedPersona),
       ]);
       setMaterial(nextMaterial);
@@ -107,7 +107,7 @@ function App() {
       const uploaded = await api.upload(file);
       setMaterials((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
       setUploadStatus("材料已经准备好，正在进入陪读。");
-      await startStudy(uploaded.id);
+      await startStudy(uploaded.id, uploaded);
     } catch (reason) {
       const message = reason instanceof Error ? reason.message : "上传失败。";
       setError(message);
