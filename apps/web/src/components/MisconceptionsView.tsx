@@ -29,20 +29,26 @@ export function MisconceptionsView({
             </div>
             <GitBranch size={20} />
           </div>
-          <div className="concept-graph">
-            <span className="graph-line line-a" />
-            <span className="graph-line line-b" />
-            <span className="graph-line line-c" />
-            <div className="concept-node core">SE Block</div>
-            <div className="concept-node node-a">Squeeze</div>
-            <div className="concept-node node-b">Excitation</div>
-            <div className="concept-node node-c active">Residual 位置</div>
-            <div className="concept-node node-d">Scale</div>
-          </div>
-          <div className="graph-legend">
-            <span><i />已掌握</span>
-            <span><i className="weak" />待巩固</span>
-          </div>
+          {tags.length > 0 ? (
+            <>
+              <div className="concept-graph">
+                <span className="graph-line line-a" />
+                <span className="graph-line line-b" />
+                <span className="graph-line line-c" />
+                <div className="concept-node core">SE Block</div>
+                <div className="concept-node node-a">Squeeze</div>
+                <div className="concept-node node-b">Excitation</div>
+                <div className="concept-node node-c active">Residual 位置</div>
+                <div className="concept-node node-d">Scale</div>
+              </div>
+              <div className="graph-legend">
+                <span><i />已掌握</span>
+                <span><i className="weak" />待巩固</span>
+              </div>
+            </>
+          ) : (
+            <p className="empty-graph">完成学习诊断后，这里将展示概念关联图。</p>
+          )}
         </section>
         <aside className="panel weak-detail">
           <span className="weak-icon"><Lightbulb size={22} /></span>
@@ -53,18 +59,22 @@ export function MisconceptionsView({
               ? "这条错因来自你已完成的学习诊断。回到原文证据并重新复述，可以确认误解是否已经修正。"
               : "完成一次答题和复述后，这里才会显示真实错因，不再预置演示结论。"}
           </p>
-          <div className="formula-compare">
-            <span className="wrong">SE(F(x) + x)</span>
-            <ArrowRight size={16} />
-            <span className="right">SE(F(x)) + x</span>
-          </div>
-          <div className="evidence-note">
-            <BookOpenCheck size={17} />
-            <span><strong>证据位置</strong>PDF 第 4 页 · Figure 3</span>
-          </div>
-          <button className="primary-button wide" onClick={onReview}>
+          {tags.length > 0 && (
+            <div className="formula-compare">
+              <span className="wrong">SE(F(x) + x)</span>
+              <ArrowRight size={16} />
+              <span className="right">SE(F(x)) + x</span>
+            </div>
+          )}
+          {tags.length > 0 && (
+            <div className="evidence-note">
+              <BookOpenCheck size={17} />
+              <span><strong>证据位置</strong>PDF 第 4 页 · Figure 3</span>
+            </div>
+          )}
+          <button className="primary-button wide" onClick={onReview} disabled={!tags.length}>
             <RotateCcw size={17} />
-            开始 8 分钟巩固
+            {tags.length ? "开始巩固练习" : "尚无错因可巩固"}
           </button>
         </aside>
       </div>

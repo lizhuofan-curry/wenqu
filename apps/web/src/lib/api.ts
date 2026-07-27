@@ -19,22 +19,49 @@ import {
 } from "./storage";
 import { loadCloudArchive, saveRecordToCloud } from "./cloud";
 
-type ApiErrorPayload = {
-  detail?: string;
-};
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, init);
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const url = `${BASE_URL}${path}`;
+  const controller = new AbortController();
+  const signal = controller.signal;
+
+  const pending = fetch(url, {
+    ...init,
+    signal,
+  });
+
+  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await pending;
+  } finally {
+    clearTimeout(timeout);
+  }
+
   if (!response.ok) {
     let detail = `请求失败（${response.status}）`;
     try {
-      const payload = (await response.json()) as ApiErrorPayload;
+      const payload = (await response.json()) as { detail?: string };
       detail = payload.detail || detail;
     } catch {
       // Keep the HTTP fallback message.
     }
-    throw new Error(detail);
+    throw new ApiError(detail, response.status);
   }
+
   return (await response.json()) as T;
 }
 
@@ -68,26 +95,26 @@ async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T
 
 export const api = {
   personas: () =>
-    withDemo(() => request<Persona[]>("/api/personas"), () => demoPersonas),
+    withDemo(() => request<Persona[]>("/personas"), () => demoPersonas),
   materials: () =>
     withDemo(
-      () => request<MaterialSummary[]>("/api/materials"),
+      () => request<MaterialSummary[]>("/materials"),
       () => [demoMaterial],
     ),
   material: (id: string) =>
     withDemo(
-      () => request<Material>(`/api/materials/${id}`),
+      () => request<Material>(`/materials/${id}`),
       () => ({ ...demoMaterial, id }),
     ),
   archive: () =>
     withDemo(
-      () => request<ArchiveItem[]>("/api/archive"),
+      () => request<ArchiveItem[]>("/archive"),
       async () => (await loadCloudArchive()) ?? loadLocalArchive(),
     ),
   createSession: (materialId: string, personaId: string) =>
     withDemo(
       () =>
-        request<Session>("/api/sessions", {
+        request<Session>("/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ material_id: materialId, persona_id: personaId }),
@@ -105,7 +132,7 @@ export const api = {
   ) =>
     withDemo(
       () =>
-        request<Session>(`/api/sessions/${sessionId}/evaluate`, {
+        request<Session>(`/sessions/${sessionId}/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ answers, retelling }),
@@ -134,7 +161,9 @@ export const api = {
           savedAt: new Date().toISOString(),
         };
         saveStudyRecord(record);
-        await saveRecordToCloud(record);
+        saveRecordToCloud(record).catch((reason: unknown) => {
+          console.error("云端记录保存失败，本地已保存：", reason);
+        });
         return latestDemoSession;
       },
     ),
@@ -143,7 +172,7 @@ export const api = {
     form.append("file", file);
     return withDemo(
       () =>
-        request<Material>("/api/materials/upload", {
+        request<Material>("/materials/upload", {
           method: "POST",
           body: form,
         }),

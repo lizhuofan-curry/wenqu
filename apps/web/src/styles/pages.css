@@ -807,6 +807,15 @@
     repeating-linear-gradient(0deg, transparent, transparent 31px, color-mix(in srgb, var(--line) 38%, transparent) 32px);
 }
 
+.empty-graph {
+  display: flex;
+  min-height: 200px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  font-size: 14px;
+}
+
 .concept-node {
   position: absolute;
   z-index: 2;

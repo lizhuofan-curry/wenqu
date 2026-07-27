@@ -198,13 +198,21 @@ function App() {
       {view === "insights" && (
         <InsightsView
           items={archive}
-          onReview={() => materials[0] && void startStudy(materials[0].id)}
+          onReview={() => {
+            const recent = archive[0]?.material_id;
+            const target = materials.find((m) => m.id === recent) || materials[0];
+            if (target) void startStudy(target.id);
+          }}
         />
       )}
       {view === "misconceptions" && (
         <MisconceptionsView
           items={archive}
-          onReview={() => materials[0] && void startStudy(materials[0].id)}
+          onReview={() => {
+            const recent = archive[0]?.material_id;
+            const target = materials.find((m) => m.id === recent) || materials[0];
+            if (target) void startStudy(target.id);
+          }}
         />
       )}
       {view === "study" && material && session && persona && (

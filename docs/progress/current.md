@@ -42,6 +42,39 @@
 ### 涉及文件
 `lib/api.ts`, `lib/cloud.ts`, `components/Shell.tsx`, `components/InsightsView.tsx`, `styles/pages.css`, `styles/shell.css`, `App.tsx`, `package.json`, `.gitignore`, `scripts/py.mjs`（新）
 
+## 2026-07-27｜前端评审批次 B 代码修复完成 ✅
+
+- 在批次 A 基础上完成全部五项 P1 修复：
+
+### B1 API 客户端加固
+- `apps/web/src/lib/api.ts`：新增 `ApiError` 类携带 HTTP `status`；新增 `BASE_URL`（默认 `"/api"`，可由 `VITE_API_BASE_URL` 覆盖）；新增 `AbortSignal.timeout(15000)` 超时；
+- `apps/web/src/vite-env.d.ts`：补 `VITE_API_BASE_URL`、`VITE_DEMO_MODE` 类型声明（之前由 `vite/client` 索引签名兜底为 `any`）；
+- 所有 `request()` 路径相对化（`/api/personas` → `/personas`），由 `BASE_URL` 拼接。
+
+### B2 AuthModal 键盘可访问性
+- `apps/web/src/components/AuthModal.tsx`：新增 `useEffect` 监听 Escape 关闭；新增焦点陷阱（Tab/Shift+Tab 循环）；新增初始聚焦（`requestAnimationFrame` 聚焦第一个可聚焦元素）；新增 `inert` 属性标记 `#root`；关闭时恢复先前焦点。
+
+### B3 演示内容冒充真实数据
+- `Dashboard.tsx`：Hero 按钮文本动态读取 `materials[0].title/estimated_minutes`；进度环空态显示 0% + "尚无记录"；快速入口文案动态化；封面副标题动态化；
+- `InsightsView.tsx`：删 `items.length * 18` 假学习时长（改为不编造数字）；删重复指标；修复 `key={height + index}` 碰撞 → `key={index}`；
+- `MisconceptionsView.tsx`：概念图/公式/证据链改为仅在有真实错因时展示，空态显示占位提示；
+- `styles/pages.css`：新增 `.empty-graph` 空态样式。
+
+### B4 双写失败无补偿
+- `apps/web/src/lib/api.ts`：`saveRecordToCloud(record)` 改为 `.catch(console.error)` 不阻断 evaluate 返回；本地记录始终已落盘。
+
+### B5 复习入口硬编码
+- `apps/web/src/App.tsx`：洞察/错因页的 onReview 从最近的 archive 条目推导 material_id，回退到 materials[0]。
+
+### 验证结果
+- TypeScript `--force`：零错误；
+- Vite 生产构建：通过（CSS 41 kB, JS 251 kB）；
+- Ruff：All checks passed；
+- Pytest：1 passed, 3 PermissionError（环境问题同上）；
+
+### 涉及文件
+`lib/api.ts`, `components/AuthModal.tsx`, `components/Dashboard.tsx`, `components/InsightsView.tsx`, `components/MisconceptionsView.tsx`, `styles/pages.css`, `App.tsx`, `vite-env.d.ts`
+
 ## 2026-07-27｜当前对话已整理导出
 
 - 已将本轮从产品规划、SENet 首版、云端账号到 v.3 前端改版的主要对话整理为 Markdown；

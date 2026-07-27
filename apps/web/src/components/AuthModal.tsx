@@ -1,5 +1,5 @@
 import { CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, X } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { saveProfile } from "../lib/storage";
 import type { LocalProfile } from "../lib/storage";
 import {
@@ -14,6 +14,9 @@ type AuthModalProps = {
   onClose: () => void;
   onSuccess: (profile: LocalProfile) => void;
 };
+
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function AuthModal({
   open,
@@ -30,6 +33,53 @@ export function AuthModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const containerRef = useRef<HTMLDivElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+
+  const handleKeyDown = useCallback(
+    (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !containerRef.current) return;
+      const focusable = containerRef.current.querySelectorAll<HTMLElement>(FOCUSABLE);
+      if (focusable.length === 0) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [onClose],
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    const appRoot = document.getElementById("root");
+    if (appRoot) appRoot.setAttribute("inert", "");
+
+    const focusFirst = () => {
+      if (!containerRef.current) return;
+      const first = containerRef.current.querySelector<HTMLElement>(FOCUSABLE);
+      first?.focus();
+    };
+    // Wait a frame for the modal to render.
+    const timer = requestAnimationFrame(focusFirst);
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      cancelAnimationFrame(timer);
+      document.removeEventListener("keydown", handleKeyDown);
+      if (appRoot) appRoot.removeAttribute("inert");
+      previousFocusRef.current?.focus();
+    };
+  }, [open, handleKeyDown]);
 
   if (!open) return null;
 
@@ -80,7 +130,7 @@ export function AuthModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose} ref={containerRef}>
       <section
         className="auth-modal"
         role="dialog"
