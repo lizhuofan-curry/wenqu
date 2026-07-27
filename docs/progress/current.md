@@ -251,7 +251,7 @@
 
 ### 当前最高优先级
 
-v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.vercel.app。下一步：跨设备数据验收 → DeepSeek 生产配置。
+v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.vercel.app。已完成跨设备验收、DeepSeek 评分上线、RAG 管道、上传材料持久化。下一步：稳定上传→评分闭环 + 更新文档。
 
 ## 当前阶段
 
@@ -285,7 +285,10 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 [x] Vercel Python Serverless 后端在线评分
 [x] DeepSeek API Key 已安全注入生产环境
 [x] 跨设备数据同步验收（手机→电脑档案互通）
-[x] 真实 DeepSeek AI 评分调用（语义评估，非纯关键词）
+[x] 真实 DeepSeek AI 评分调用（语义评估）
+[x] RAG 管道：chunk + embed + 检索 + 评分
+[x] 上传材料 PDF 文本提取 + 地图/双轨填充
+[ ] 上传材料完整闭环（评分后持久化到 Supabase）
 [ ] 邀请第一位真实学习者
 [ ] 邀请首位项目共创者
 [ ] 完成 5 人首轮学习测试
@@ -455,11 +458,10 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 
 ## 当前已知限制
 
-- 生产后端评分仍是规则引擎（关键词匹配），尚未接入 DeepSeek AI 真实调用；
-- DeepSeek API Key 已配好但 `evaluate_senet`（SENet 材料）走纯规则，非 SENet 材料走 `evaluate_with_ai`（需 AI），后者是下一阶段目标；
-- Serverless 内存存储意味着同一用户两次冷启动之间的学习会话不互通（但结束后写入 Supabase 档案即可）
-- v.0 只支持有文本层的 PDF，不支持扫描件 OCR；
-- 自动测试出现一条来自 FastAPI TestClient 依赖的弃用警告，不影响当前测试；
+- DeepSeek AI 评分已上线（SENet + 上传材料均支持 RAG 检索），但 prompt 优化可继续改进；
+- 上传材料的持久化仍依赖内存（Supabase REST API 已接但冷启动需手动恢复），后续应实现完整读回管线；
+- 上传 PDF 文本提取依赖 pymupdf（200 MB），扫描版 PDF 不支持 OCR；
+- Serverless 冷启动丢 session（已通过 session 存储 questions 缓解），非 SENet 材料冷启动评分有待改进；
 - 尚未完成 5 人首轮真实学习者测试、隐私协议和应用商店合规。
 
 ## 接下来自动进行

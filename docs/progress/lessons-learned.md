@@ -265,3 +265,31 @@
 - 根因：复用导入语句是 clean-code 习惯，但在初始版本中未清理干净。
 - 解决：去重，只保留文件顶部的 `from pydantic import BaseModel, Field`。
 - 预防：大文件（单文件 400+ 行）编辑时，先用 grep 检查是否存在重复 from-import，再新增代码。
+
+### 35. FastAPI 上传端点必须安装 python-multipart，否则所有带文件的 POST 都在框架层 500
+
+- 现象：上传 PDF 始终返回「请求失败（500）」，没有任何日志或错误提示。
+- 根因：FastAPI 的 `UploadFile` 依赖 `python-multipart` 解析 multipart/form-data 请求体。`requirements.txt` 里没有这个包，框架层直接抛异常，根本进不到业务代码。
+- 解决：加上 `python-multipart>=0.0.20`，之后上传立刻通了。
+- 预防：任何 FastAPI 项目，只要用到 `UploadFile` 或 `Form(...)`，第一个依赖就是 `python-multipart`——这是一条铁律，不是可选项。
+
+### 36. Vercel Serverless 函数冷启动每次都是全新 Python 进程——无磁盘、无状态、无 supabase-py
+
+- 现象：辛辛苦苦用 Supabase 存了材料，冷启动后读不回来，上传的材料刷新就没了。
+- 根因：Vercel Python 函数每次冷启动都是全新进程，文件系统只有 `/tmp` 可写且不跨冷启动持久化。加上 `supabase-py` 有底层依赖（postgrest、gotrue、storage、realtime），Vercel 环境不一定能装全。
+- 解决：放弃 supabase-py，改用 Python 标准库 `urllib.request` 直接调 Supabase REST API（`_supa_get`、`_supa_post`），零第三方依赖。但即便如此，材料列表和内容还是在内存中，冷启动一样丢失——真正的持久化需要每次从 Supabase 读回。当前 MVP 接受这个限制。
+- 预防：Serverless 环境里永远不要依赖本地 SQLite 或文件系统作为持久化层。唯一可靠的持久化方案是外部服务的 REST API。对于 Vercel Python，优先级是：标准库 HTTP > 轻量第三方库 > 重型 ORM。
+
+### 37. pymupdf 是 Vercel Python 能装的最大的包，但必须装——否则 PDF 文本提取是零
+
+- 现象：不加 pymupdf 时，PDF 上传后地图和双轨全是「请在后端环境中完整解析」的空壳文字。
+- 根因：Vercel Python 构建环境可以装 pymupdf（`pip install pymupdf`）——它虽然约 200 MB（含 C 扩展），但与 SPA 前端 `node_modules` 相比不算大。Vercel 的 `uv` 包管理器能轻松处理。
+- 解决：`requirements.txt` 加上 `pymupdf>=1.26`，修复文本提取逻辑：先试 pymupdf，不行再回退到原始字节解析。
+- 预防：Vercel Python 函数体积上限是 250 MB 压缩后。当前前端 257 KB + pymupdf ~200 MB + openai ~5 MB，总计约 205 MB，余量充足。但未来加新包时要留意。
+
+### 38. 上传材料后冷启动丢数据 + 多次部署失败 = 用户看到"请求失败"的煎熬体验
+
+- 现象：用户在 6-7 次部署后仍然看到上传失败，每次刷新都没有改善。
+- 根因：这是三个独立问题叠加的复合故障——① python-multipart 缺失导致 500、② supabase-py 导入失败导致函数无法启动、③ 冷启动丢材料导致刷新后材料消失。每次修复只解决一层，用户看不到进度（因为每次都是一样的「请求失败」）。
+- 解决：最终通过最小化策略突破——去掉所有第三方依赖（仅 fastapi + openai + python-multipart + pymupdf 四个必需的），用 urllib 替代 supabase-py，接受冷启动丢材料的限制，专注把「上传 → 文本提取 → 返回材料」这条链路跑通。
+- 预防：遇到持续 500 故障时，不要反复迭代大改动。先降到绝对最小可验证版本（只有一个健康检查端点），逐一加回功能点，每次部署后确认。四层叠加故障是时间黑洞。
