@@ -85,11 +85,8 @@ async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T
   try {
     return await live();
   } catch (error) {
-    if (error instanceof TypeError) {
-      degraded = true;
-      return fallback();
-    }
-    throw error;
+    degraded = true;
+    return fallback();
   }
 }
 
