@@ -208,13 +208,17 @@ export const api = {
     ),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),
-  createSession: (materialId: string, personaId: string) =>
+  createSession: (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>) =>
     withDemo(
       () =>
         request<Session>("/sessions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ material_id: materialId, persona_id: personaId }),
+          body: JSON.stringify({
+            material_id: materialId,
+            persona_id: personaId,
+            questions: questions || null,
+          }),
         }),
       () => {
         latestDemoSession = createDemoSession(personaId);
@@ -263,23 +267,15 @@ export const api = {
         return completed;
       },
     ),
-  upload: (file: File) => {
+  upload: async (file: File) => {
+    if (useDemo) {
+      throw new Error("演示模式下无法上传新材料，请在后端已启动的环境中打开。");
+    }
     const form = new FormData();
     form.append("file", file);
-    return withDemo(
-      () =>
-        request<Material>("/materials/upload", {
-          method: "POST",
-          body: form,
-        }),
-      () => ({
-        ...demoMaterial,
-        id: `upload-${Date.now()}`,
-        title: file.name.replace(/\.(pdf|md|markdown)$/i, ""),
-        subtitle: "演示模式已建立材料地图；接入后端后将解析真实内容",
-        source_type: "upload",
-        created_at: new Date().toISOString(),
-      }),
-    );
+    return request<Material>("/materials/upload", {
+      method: "POST",
+      body: form,
+    });
   },
 };

@@ -85,10 +85,20 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      const [nextMaterial, nextSession] = await Promise.all([
-        preloaded ? Promise.resolve(preloaded) : api.material(materialId),
-        api.createSession(materialId, selectedPersona),
-      ]);
+      const nextMaterial = preloaded || (await api.material(materialId));
+      // Pass questions to session so evaluation survives cold starts
+      const rawQuestions = (nextMaterial as Record<string, unknown>).questions as
+        Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }> | undefined;
+      const nextSession = await api.createSession(
+        materialId,
+        selectedPersona,
+        rawQuestions?.map((q) => ({
+          id: q.id,
+          prompt: q.prompt,
+          answer_guide: q.answer_guide || "",
+          max_score: q.max_score ?? 4,
+        })),
+      );
       setMaterial(nextMaterial);
       setSession(nextSession);
       setView("study");

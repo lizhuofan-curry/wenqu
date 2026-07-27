@@ -642,7 +642,7 @@ class MaterialGeneratePayload(BaseModel):
 
 
 async def _generate_material_via_ai(filename: str, text: str) -> dict:
-    """Call DeepSeek to generate learning material from uploaded content."""
+    """Call DeepSeek to generate learning material. Fast-optimised for Vercel 10s limit."""
     from openai import OpenAI
 
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
@@ -652,37 +652,18 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        timeout=25.0,
+        timeout=8.0,
+        max_retries=0,
     )
     model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
-    prompt = f"""根据以下材料生成一个完整的学习包，返回 JSON。
-
-材料文件名: {filename}
-
-材料内容:
-{text[:30000]}
-
-要求:
-- title: 材料标题
-- subtitle: 一句话副标题
-- estimated_minutes: 预估学习分钟数 (10-60)
-- difficulty: 难度标签
-- map: 5 个地图节点，依次为 problem/method/evidence/conclusion/limitations
-- learning_goals: 3 个学习目标
-- sections: 3-4 个学习段，每段含 id/title/eyebrow/strict_track/companion_track/source
-- questions: 3 道理解题，每道含 id/kind/prompt/hint/source/answer_guide/max_score
-
-所有事实必须来自材料原文，source.label 标注页码或章节。用中文。"""
+    prompt = f"文件: {filename}\n\n内容摘要:\n{text[:2000]}\n\n生成学习包 JSON: title(标题), subtitle(副标题), estimated_minutes, difficulty, map(5节点 problem/method/evidence/conclusion/limitations), learning_goals(3个), sections(3-4个, 每段含id/title/eyebrow/strict_track/companion_track/source), questions(3道, 每道含id/kind/prompt/hint/source/answer_guide/max_score)。只输出JSON，不用markdown。用中文。"
 
     resp = client.chat.completions.create(
         model=model,
-        messages=[
-            {"role": "system", "content": "你是内容引擎。只输出合法 JSON，不用 Markdown 代码块。"},
-            {"role": "user", "content": prompt},
-        ],
+        messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
-        max_tokens=6000,
+        max_tokens=2000,
     )
 
     raw = resp.choices[0].message.content
@@ -707,26 +688,36 @@ async def upload_material(file: UploadFile = File(...)):
     source_type = "pdf" if suffix == ".pdf" else "markdown"
     source_text = _extract_text(filename, content)
 
-    generated = await _generate_material_via_ai(filename, source_text)
-
     mid = f"upload-{uuid.uuid4().hex[:12]}"
-    material = dict(
-        id=mid,
-        title=generated.get("title", filename),
-        subtitle=generated.get("subtitle", ""),
-        source_type=source_type,
-        estimated_minutes=generated.get("estimated_minutes", 20),
-        difficulty=generated.get("difficulty", "中等"),
-        progress=0,
-        created_at=datetime.now(UTC).isoformat(),
-        map=generated.get("map", []),
-        learning_goals=generated.get("learning_goals", []),
-        sections=generated.get("sections", []),
-        questions=generated.get("questions", []),
-    )
-    store.seed_senet(material)  # uses same dict-based storage
 
-    # Chunk + embed for RAG retrieval during evaluation
+    # Attempt AI generation; fall back to basic material if it fails
+    try:
+        generated = await _generate_material_via_ai(filename, source_text)
+    except Exception:
+        # AI generation failed — return a basic material so user can still see it
+        basic = dict(
+            id=mid, title=filename, subtitle="AI 生成失败，请重试或使用较短材料。",
+            source_type=source_type, estimated_minutes=15, difficulty="待评估", progress=0,
+            created_at=datetime.now(UTC).isoformat(),
+            map=[dict(key="problem", title="待解析", summary="上传成功，但 AI 自动生成学习包超时。请重试。",
+                      source=dict(label="-"))],
+            learning_goals=[], sections=[], questions=[],
+        )
+        store.seed_senet(basic)
+        return basic
+
+    material = dict(
+        id=mid, title=generated.get("title", filename),
+        subtitle=generated.get("subtitle", ""), source_type=source_type,
+        estimated_minutes=generated.get("estimated_minutes", 20),
+        difficulty=generated.get("difficulty", "中等"), progress=0,
+        created_at=datetime.now(UTC).isoformat(),
+        map=generated.get("map", []), learning_goals=generated.get("learning_goals", []),
+        sections=generated.get("sections", []), questions=generated.get("questions", []),
+    )
+    store.seed_senet(material)
+
+    # Chunk + embed for RAG
     all_text = source_text
     for section in material.get("sections", []):
         all_text += "\n" + section.get("strict_track", "") + "\n" + section.get("companion_track", "")
@@ -739,19 +730,30 @@ async def upload_material(file: UploadFile = File(...)):
                 for ct, emb in zip(chunk_texts, embeddings)
             ])
     except Exception:
-        pass  # chunking failure is non-blocking
+        pass
 
     return material
 
 
+class CreateSessionRequest(BaseModel):
+    material_id: str
+    persona_id: str = "huangfeng"
+    questions: list[dict] | None = None
+
+
 @app.post("/api/sessions", status_code=201)
-def create_session(req: SessionCreate):
+def create_session(req: CreateSessionRequest):
     m = store.get_material(req.material_id)
     if m is None:
         raise HTTPException(404, "材料不存在。")
     if not any(p["id"] == req.persona_id for p in PERSONAS):
         raise HTTPException(400, "陪读人格不存在。")
-    return store.create_session(uuid.uuid4().hex, req.material_id, req.persona_id)
+    sid = uuid.uuid4().hex
+    s = store.create_session(sid, req.material_id, req.persona_id)
+    # Store questions in session to survive cold starts
+    if req.questions:
+        s["_questions"] = req.questions
+    return s
 
 
 @app.post("/api/sessions/{session_id}/evaluate")
@@ -763,10 +765,10 @@ async def evaluate_session(session_id: str, req: EvaluationRequest):
         raise HTTPException(409, "该学习会话已经完成。")
 
     material = store.get_material(s.get("material_id", "senet-cvpr-2018"))
-    questions = (material or {}).get("questions", [])
+    questions = (material or {}).get("questions") or s.get("_questions", [])
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     is_senet = (material or {}).get("id") == "senet-cvpr-2018"
-    chunks = store.get_chunks(s.get("material_id", "senet-cvpr-2018"))
+    chunks = store.get_chunks(s.get("material_id", "")) or []
     mt = (material or {}).get("title", "")
 
     if has_ai and questions:
