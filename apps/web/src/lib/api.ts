@@ -29,8 +29,9 @@ export class ApiError extends Error {
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
 const REQUEST_TIMEOUT_MS = 12_000;
+const UPLOAD_TIMEOUT_MS = 45_000;
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, timeoutMs?: number): Promise<T> {
   const url = `${BASE_URL}${path}`;
   const controller = new AbortController();
   const signal = controller.signal;
@@ -40,7 +41,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     signal,
   });
 
-  const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const ms = timeoutMs ?? REQUEST_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), ms);
 
   let response: Response;
   try {
@@ -276,7 +278,7 @@ export const api = {
     return request<Material>("/materials/upload", {
       method: "POST",
       body: form,
-    });
+    }, UPLOAD_TIMEOUT_MS);
   },
   deleteMaterial: (id: string) =>
     request<{ deleted: string }>(`/materials/${id}`, { method: "DELETE" }),
