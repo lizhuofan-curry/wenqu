@@ -24,18 +24,31 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field, ValidationError
-from supabase import create_client as create_supabase_client
 
-# --- Supabase client (for persistent materials storage) -----------------------
-_supabase_url = os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
-_supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+# --- Supabase client (lazy init to avoid breaking import on Vercel) -----------
 _supabase = None
-if _supabase_url and _supabase_key:
-    _supabase = create_supabase_client(_supabase_url, _supabase_key)
+
+
+def _get_supabase():
+    global _supabase
+    if _supabase is not None:
+        return _supabase
+
+    url = os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+    if url and key:
+        try:
+            from supabase import create_client as create_supabase_client
+            _supabase = create_supabase_client(url.strip('"').strip(), key.strip('"').strip())
+        except Exception:
+            _supabase = False
+    else:
+        _supabase = False
+    return _supabase if _supabase is not False else None
 
 
 def _supa_enabled():
-    return _supabase is not None
+    return _get_supabase() is not None
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -585,7 +598,7 @@ def list_materials():
     materials = list(store.list_materials())
     if _supa_enabled():
         try:
-            resp = _supabase.table("materials").select("payload_json").order("created_at", ascending=False).execute()
+            resp = _get_supabase().table("materials").select("payload_json").order("created_at", ascending=False).execute()
             for row in (resp.data or []):
                 p = row.get("payload_json")
                 if p and isinstance(p, dict):
@@ -609,7 +622,7 @@ def get_material(material_id: str):
     m = store.get_material(material_id)
     if m is None and _supa_enabled():
         try:
-            resp = _supabase.table("materials").select("payload_json").eq("id", material_id).execute()
+            resp = _get_supabase().table("materials").select("payload_json").eq("id", material_id).execute()
             if resp.data:
                 m = resp.data[0].get("payload_json")
                 if m and isinstance(m, dict):
@@ -753,7 +766,7 @@ async def upload_material(file: UploadFile = File(...)):
     # Persist in Supabase so material survives cold starts
     if _supa_enabled():
         try:
-            _supabase.table("materials").upsert(
+            _get_supabase().table("materials").upsert(
                 {"id": mid, "payload_json": material},
                 on_conflict="id",
             ).execute()
