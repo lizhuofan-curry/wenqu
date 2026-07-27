@@ -45,9 +45,16 @@ class MemStore:
     def __init__(self):
         self._materials: Dict[str, dict] = {}
         self._sessions: Dict[str, dict] = {}
+        self._chunks: Dict[str, list[dict]] = {}  # material_id -> [{text, embedding}]
 
     def seed_senet(self, senet: dict):
         self._materials[senet["id"]] = senet
+
+    def set_chunks(self, material_id: str, chunks: list[dict]):
+        self._chunks[material_id] = chunks
+
+    def get_chunks(self, material_id: str) -> list[dict]:
+        return self._chunks.get(material_id, [])
 
     def list_materials(self) -> List[dict]:
         return list(self._materials.values())
@@ -153,6 +160,28 @@ SENET_MATERIAL = dict(
 )
 
 store.seed_senet(SENET_MATERIAL)
+
+# Pre-chunk SENet for faster AI evaluation (built once per cold start)
+def _seed_senet_chunks():
+    text = ""
+    for s in SENET_MATERIAL.get("sections", []):
+        text += s.get("strict_track", "") + "\n" + s.get("companion_track", "") + "\n"
+    try:
+        chunks = _chunk_text(text)
+        if chunks:
+            import asyncio
+            loop = asyncio.new_event_loop()
+            embeddings = loop.run_until_complete(_embed_texts(chunks))
+            loop.close()
+            store.set_chunks("senet-cvpr-2018", [
+                {"text": c, "embedding": e}
+                for c, e in zip(chunks, embeddings)
+            ])
+    except Exception:
+        pass
+
+if bool(os.getenv("DEEPSEEK_API_KEY")):
+    _seed_senet_chunks()
 
 # --- Scoring (pure Python, no AI needed for SENet) ---------------------------
 # We inline a minimal version of evaluate_senet so we don't depend on the
@@ -331,12 +360,82 @@ class AIEvaluationResult(BaseModel):
     misconception_tags: list[str]
 
 
+# --- RAG: chunking, embedding, retrieval ---------------------------------------
+
+def _chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> list[str]:
+    """Split text into overlapping chunks at sentence boundaries."""
+    if len(text) <= chunk_size:
+        return [text]
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        if end >= len(text):
+            chunks.append(text[start:].strip())
+            break
+        # Try to break at sentence boundary within the overlap zone
+        cut = end
+        for sep in ["\n\n", "\n", "。", "；", ". ", " "]:
+            pos = text.rfind(sep, end - overlap, end)
+            if pos > start:
+                cut = pos + len(sep)
+                break
+        chunks.append(text[start:cut].strip())
+        start = cut - overlap if cut - overlap > start else cut
+    return [c for c in chunks if len(c) > 20]
+
+
+async def _embed_texts(texts: list[str]) -> list[list[float]]:
+    """Get embeddings from DeepSeek API."""
+    from openai import OpenAI
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        return []
+    client = OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        timeout=10.0,
+    )
+    resp = client.embeddings.create(
+        model="deepseek-embedding",  # or text-embedding-ada-002 compatible
+        input=texts,
+    )
+    return [d.embedding for d in resp.data]
+
+
+def _cosine_similarity(a: list[float], b: list[float]) -> float:
+    """Compute cosine similarity between two vectors."""
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = sum(x * x for x in a) ** 0.5
+    norm_b = sum(x * x for x in b) ** 0.5
+    return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
+
+
+def _retrieve_chunks(
+    query_embedding: list[float],
+    chunks: list[dict],
+    top_k: int = 4,
+) -> list[str]:
+    """Return top-k most relevant chunk texts by cosine similarity."""
+    if not query_embedding or not chunks:
+        return []
+    scored = [
+        (chunk["text"], _cosine_similarity(query_embedding, chunk["embedding"]))
+        for chunk in chunks
+        if chunk.get("embedding")
+    ]
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return [text for text, _ in scored[:top_k]]
+
+
 async def evaluate_with_deepseek(
     questions: list[dict],
     answers: list[dict],
     retelling: str,
+    material_chunks: list[dict] | None = None,
+    material_title: str = "",
 ) -> dict:
-    """Call DeepSeek (via OpenAI-compatible SDK) to evaluate answers semantically."""
+    """Call DeepSeek to evaluate answers, using RAG-retrieved context if available."""
     from openai import OpenAI
 
     api_key = os.getenv("DEEPSEEK_API_KEY", "")
@@ -348,8 +447,7 @@ async def evaluate_with_deepseek(
 
     client = OpenAI(api_key=api_key, base_url=base_url, timeout=5.0, max_retries=0)
 
-    # Build questions context (without revealing full answer_guide verbatim —
-    # give enough for evaluation but keep the scoring rubric)
+    # Build questions context
     question_context = []
     for q in questions:
         question_context.append(dict(
@@ -359,17 +457,40 @@ async def evaluate_with_deepseek(
             max_score=q.get("max_score", 4),
         ))
 
+    # RAG: retrieve relevant source chunks for the user's combined responses
+    user_text = " ".join(a.get("response", "") for a in answers) + " " + retelling
+    rag_context = ""
+    if material_chunks:
+        try:
+            query_embeddings = await _embed_texts([user_text[:2000]])
+            if query_embeddings:
+                relevant = _retrieve_chunks(query_embeddings[0], material_chunks, top_k=4)
+                if relevant:
+                    rag_context = "\n\n相关原文片段：\n" + "\n---\n".join(relevant)
+        except Exception:
+            pass  # RAG failure is non-blocking; fall back to no context
+
     prompt = {
-        "task": "作为问渠诊断器，根据评分依据评估学习者的三道 SENet 题目的回答和复述。用中文。",
+        "task": ("作为问渠诊断器，根据评分依据和提供的原文片段评估学习者的回答和复述。用中文。"
+                 if rag_context else "作为问渠诊断器，根据评分依据评估学习者的回答和复述。用中文。"),
+        "material": material_title,
         "questions": question_context,
         "answers": [{"question_id": a.get("question_id",""), "response": a.get("response","")} for a in answers],
         "retelling": retelling,
     }
+    if rag_context:
+        prompt["source_excerpts"] = rag_context
 
     response = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "你是严格但善意的学习诊断器。只输出合法 JSON，不用 Markdown 代码块。返回 mastery (0-100 整数)、headline (中文一句总结)、question_results (每道题 score/verdict/feedback/misconception_tags)、retelling (score/feedback/misconception_tags)、misconception_tags。"},
+            {"role": "system", "content": (
+                "你是严格但善意的学习诊断器。只输出合法 JSON，不用 Markdown 代码块。"
+                "返回 mastery (0-100 整数)、headline (中文一句总结)、"
+                "question_results (每道题 score/verdict/feedback/misconception_tags)、"
+                "retelling (score/feedback/misconception_tags)、misconception_tags。"
+                "反馈中引用原文证据时标注页码或段落。"
+            )},
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         response_format={"type": "json_object"},
@@ -604,6 +725,22 @@ async def upload_material(file: UploadFile = File(...)):
         questions=generated.get("questions", []),
     )
     store.seed_senet(material)  # uses same dict-based storage
+
+    # Chunk + embed for RAG retrieval during evaluation
+    all_text = source_text
+    for section in material.get("sections", []):
+        all_text += "\n" + section.get("strict_track", "") + "\n" + section.get("companion_track", "")
+    try:
+        chunk_texts = _chunk_text(all_text)
+        if chunk_texts:
+            embeddings = await _embed_texts(chunk_texts)
+            store.set_chunks(mid, [
+                {"text": ct, "embedding": emb}
+                for ct, emb in zip(chunk_texts, embeddings)
+            ])
+    except Exception:
+        pass  # chunking failure is non-blocking
+
     return material
 
 
@@ -629,10 +766,16 @@ async def evaluate_session(session_id: str, req: EvaluationRequest):
     questions = (material or {}).get("questions", [])
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     is_senet = (material or {}).get("id") == "senet-cvpr-2018"
+    chunks = store.get_chunks(s.get("material_id", "senet-cvpr-2018"))
+    mt = (material or {}).get("title", "")
 
     if has_ai and questions:
         try:
-            result = await evaluate_with_deepseek(questions, req.answers, req.retelling)
+            result = await evaluate_with_deepseek(
+                questions, req.answers, req.retelling,
+                material_chunks=chunks if not is_senet else None,
+                material_title=mt,
+            )
         except Exception:
             # AI failed — fall back to rules for SENet, error for others
             if is_senet:
