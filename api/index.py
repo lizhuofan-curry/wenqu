@@ -687,13 +687,109 @@ def debug_info():
 
 @app.post("/api/materials/upload", status_code=201)
 async def upload_material(file: UploadFile):
-    """Minimal upload: accept file, create template material. No text extraction."""
+    """Upload: extract text from file, build material with real content."""
     mid = f"upload-{uuid.uuid4().hex[:12]}"
     filename = (file.filename or "untitled")
     title = FilePath(filename).stem
     suffix = FilePath(filename).suffix.lower()
-
     source_type = "pdf" if suffix == ".pdf" else "markdown"
+
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "文件不能超过 10 MB。")
+
+    # --- Text extraction --------------------------------------------------
+    source_text = ""
+    if suffix in {".md", ".markdown"}:
+        try:
+            source_text = content.decode("utf-8")[:60000]
+        except UnicodeDecodeError:
+            source_text = content.decode("latin-1", errors="ignore")[:60000]
+    else:
+        # PDF: try pymupdf, fall back to raw text extraction
+        try:
+            import pymupdf
+            doc = pymupdf.open(stream=content, filetype="pdf")
+            pages = []
+            for i, page in enumerate(doc[:30]):
+                pages.append(page.get_text("text"))
+            source_text = "\n".join(pages)
+            if len(source_text.strip()) < 50:
+                source_text = ""
+        except ImportError:
+            pass
+        if not source_text:
+            try:
+                decoded = content.decode("latin-1", errors="ignore")
+                parts = []
+                for block in decoded.split("stream\n")[1:]:
+                    if "endstream" in block:
+                        inner = block.split("endstream")[0]
+                        for line in inner.split("\n"):
+                            line = line.strip()
+                            if line.startswith("(") and line.endswith(") Tj"):
+                                parts.append(line[1:-4])
+                            elif line.startswith("[(") and ") TJ" in line:
+                                for seg in line.split("(")[1:]:
+                                    if ")" in seg:
+                                        parts.append(seg.split(")")[0])
+                source_text = " ".join(parts)
+            except Exception:
+                pass
+        if not source_text:
+            source_text = f"[此 PDF 需要 pymupdf 包来提取文本，当前显示为预览模式。请在后端启动的环境中完整解析。]"
+        source_text = source_text[:60000]
+
+    # --- Build sections (split text into chunks for dual-track) -----------
+    text_preview = source_text[:8000] if source_text else f"[文本提取失败，请在后端启动的环境中重新上传。]"
+    text_len = len(source_text)
+
+    # Split into 2-3 sections at natural breaks
+    sections = []
+    if text_len > 2000:
+        parts = []
+        # Try to split on double newlines or "Introduction"/"引言" markers
+        for sep in ["Introduction", "引言", "\n\n\n", "\n\n"]:
+            chunks = [c.strip() for c in text_preview.split(sep) if len(c.strip()) > 100]
+            if len(chunks) >= 2:
+                parts = chunks[:3]
+                break
+        if len(parts) < 2:
+            # Just split evenly
+            third = max(len(text_preview) // 3, 500)
+            parts = [
+                text_preview[:third],
+                text_preview[third:third*2],
+                text_preview[third*2:],
+            ]
+        section_labels = ["开篇与背景", "核心内容", "结论与要点"]
+        for i, part in enumerate(parts[:3]):
+            sections.append(dict(
+                id=f"s{i+1}", title=section_labels[i] if i < len(section_labels) else f"第{i+1}段",
+                eyebrow=f"{filename} · 第{i+1}部分",
+                strict_track=part[:3000],
+                companion_track="这段内容来自你上传的材料。阅读时注意：核心问题是什么？关键方法或数据是什么？",
+                source=dict(label="上传文件"),
+            ))
+
+    # --- Build map from extracted text ------------------------------------
+    map_items = [
+        dict(key="problem", title="问题与动机",
+             summary=(source_text[:300] + "…") if len(source_text) > 300 else source_text[:300],
+             source=dict(label="材料开头")),
+        dict(key="method", title="方法与设计",
+             summary=(source_text[text_len//5:text_len//5+300] + "…") if text_len > 500 else source_text[:300],
+             source=dict(label="材料中段")),
+        dict(key="evidence", title="证据与结果",
+             summary=(source_text[text_len//2:text_len//2+300] + "…") if text_len > 1000 else source_text[:300],
+             source=dict(label="材料后段")),
+        dict(key="conclusion", title="结论与影响",
+             summary="请根据材料内容，用自己的话概括主要结论及其意义。",
+             source=dict(label="材料结尾")),
+        dict(key="limitations", title="局限与边界",
+             summary="请根据材料内容，指出方法或结论的适用范围和局限性。",
+             source=dict(label="作者讨论")),
+    ]
 
     questions = [
         dict(id="q1", kind="concept",
@@ -702,31 +798,39 @@ async def upload_material(file: UploadFile):
              source=dict(label="材料开头"), answer_guide="准确描述研究问题和动机。", max_score=4),
         dict(id="q2", kind="method",
              prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
-             hint="关注方法部分的具体步骤和公式。",
+             hint="关注方法部分的具体步骤和公式（如有）。",
              source=dict(label="材料方法部分"), answer_guide="准确描述方法的关键步骤。", max_score=4),
         dict(id="q3", kind="evidence",
-             prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
+             prompt="作者得到了什么结论？有什么证据支持，又有哪些局限性？",
              hint="区分论文结论和你自己的推断。",
              source=dict(label="材料结论部分"), answer_guide="指出结论、证据和局限。", max_score=3),
     ]
 
     material = dict(
         id=mid, title=title,
-        subtitle=f"上传材料 · {source_type.upper()}",
+        subtitle=f"上传材料 · {source_type.upper()} · {text_len} 字",
         source_type=source_type, estimated_minutes=20, difficulty="自助探索",
         progress=0, created_at=datetime.now(UTC).isoformat(),
-        map=[
-            dict(key="problem", title="问题与动机", summary="请根据材料概括研究问题。", source=dict(label="材料开头")),
-            dict(key="method", title="方法与设计", summary="请描述核心方法或技术方案。", source=dict(label="方法部分")),
-            dict(key="evidence", title="证据与结果", summary="请列出关键发现和证据。", source=dict(label="结果部分")),
-            dict(key="conclusion", title="结论与影响", summary="请概括主要结论。", source=dict(label="讨论部分")),
-            dict(key="limitations", title="局限与边界", summary="请指出方法或结论的适用范围。", source=dict(label="材料结尾")),
-        ],
+        map=map_items,
         learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
-        sections=[],
+        sections=sections,
         questions=questions,
     )
     store.seed_senet(material)
+
+    # Chunk + embed for RAG evaluation (async, non-blocking on error)
+    try:
+        chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
+        if chunk_texts:
+            embeddings = await _embed_texts(chunk_texts)
+            if embeddings:
+                store.set_chunks(mid, [
+                    {"text": ct, "embedding": emb}
+                    for ct, emb in zip(chunk_texts, embeddings)
+                ])
+    except Exception:
+        pass
+
     return material
 
 
