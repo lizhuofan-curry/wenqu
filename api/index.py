@@ -20,50 +20,10 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
-from pydantic import BaseModel, Field, ValidationError
-
-# --- Supabase REST helper (raw HTTP, no supabase-py dependency) ----------------
-import urllib.request as _urllib
-
-_supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
-_supa_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")).strip().strip('"')
-
-
-def _supa_enabled():
-    return bool(_supa_url and _supa_key)
-
-
-def _supa_get(path: str):
-    """GET from Supabase REST API."""
-    req = _urllib.Request(
-        f"{_supa_url}/rest/v1/{path}",
-        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
-    )
-    with _urllib.urlopen(req, timeout=8) as resp:
-        return json.loads(resp.read().decode("utf-8"))
-
-
-def _supa_post(path: str, body: dict, *, on_conflict: str = ""):
-    """POST (upsert) to Supabase REST API."""
-    headers = {
-        "apikey": _supa_key,
-        "Authorization": f"Bearer {_supa_key}",
-        "Content-Type": "application/json",
-        "Prefer": "resolution=merge-duplicates",
-    }
-    data = json.dumps(body).encode("utf-8")
-    query = f"?on_conflict={on_conflict}" if on_conflict else ""
-    req = _urllib.Request(
-        f"{_supa_url}/rest/v1/{path}{query}",
-        data=data,
-        headers=headers,
-        method="POST",
-    )
-    with _urllib.urlopen(req, timeout=8) as resp:
-        return resp.status
+from pydantic import BaseModel, Field
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -609,18 +569,6 @@ def list_personas():
 
 @app.get("/api/materials")
 def list_materials():
-    materials = list(store.list_materials())
-    if _supa_enabled():
-        try:
-            raw = _supa_get("materials?select=payload_json&order=created_at.desc")
-            for row in (raw or []):
-                p = row.get("payload_json")
-                if p and isinstance(p, dict):
-                    mid = p.get("id")
-                    if mid and not store.get_material(mid):
-                        store.seed_senet(p)
-        except Exception:
-            pass
     return [
         dict(
             id=m["id"], title=m["title"], subtitle=m["subtitle"],
@@ -634,15 +582,6 @@ def list_materials():
 @app.get("/api/materials/{material_id}")
 def get_material(material_id: str):
     m = store.get_material(material_id)
-    if m is None and _supa_enabled():
-        try:
-            raw = _supa_get(f"materials?select=payload_json&id=eq.{material_id}")
-            if raw and isinstance(raw, list) and raw:
-                m = raw[0].get("payload_json")
-                if m and isinstance(m, dict):
-                    store.seed_senet(m)
-        except Exception:
-            pass
     if m is None:
         raise HTTPException(404, "材料不存在。")
     return m
@@ -734,79 +673,46 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
     return parsed.model_dump()
 
 
-@app.post("/api/materials/upload", status_code=201)
-async def upload_material(file: UploadFile = File(...)):
-    """Upload: extract text + save immediately. Under 3 seconds total."""
-    filename = file.filename or "untitled"
-    suffix = FilePath(filename).suffix.lower()
-    if suffix not in {".pdf", ".md", ".markdown"}:
-        raise HTTPException(400, "只支持 PDF、.md 和 .markdown 文件。")
+@app.get("/api/debug")
+def debug_info():
+    """Return basic debug info to confirm the function is alive."""
+    return {
+        "python": sys.version,
+        "supa_url": bool(_supa_url),
+        "supa_key": bool(_supa_key),
+        "materials_in_memory": len(store.list_materials()),
+        "sessions_in_memory": len(store._sessions),
+    }
 
-    content = await file.read(10 * 1024 * 1024 + 1)
-    if len(content) > 10 * 1024 * 1024:
-        raise HTTPException(413, "文件不能超过 10 MB。")
+
+@app.post("/api/materials/upload", status_code=201)
+async def upload_material(file: UploadFile):
+    """Minimal upload: accept file, create template material. No text extraction."""
+    mid = f"upload-{uuid.uuid4().hex[:12]}"
+    filename = (file.filename or "untitled")
+    title = FilePath(filename).stem
+    suffix = FilePath(filename).suffix.lower()
 
     source_type = "pdf" if suffix == ".pdf" else "markdown"
-
-    # Simple text extraction - no pymupdf dependency
-    source_text = ""
-    if suffix == ".pdf":
-        try:
-            decoded = content.decode("latin-1", errors="ignore")
-            blocks = decoded.split("stream\n")
-            for b in blocks:
-                if "endstream" in b:
-                    inner = b.split("endstream")[0]
-                    if "BT" in inner and "Tj" in inner:
-                        source_text += inner + "\n"
-            # Try pymupdf if available
-            if not source_text or len(source_text) < 200:
-                try:
-                    import pymupdf
-                    doc = pymupdf.open(stream=content, filetype="pdf")
-                    pages = []
-                    for i, page in enumerate(doc[:30]):
-                        pages.append(page.get_text("text"))
-                    source_text = "\n".join(pages)
-                except ImportError:
-                    pass
-        except Exception:
-            pass
-    else:
-        try:
-            source_text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            source_text = content.decode("latin-1", errors="ignore")
-
-    if not source_text or len(source_text.strip()) < 50:
-        # Return with empty text — user can still see the material card
-        source_text = f"[无法提取文本内容。文件类型: {suffix}]"
-
-    source_text = source_text[:60000]
-    mid = f"upload-{uuid.uuid4().hex[:12]}"
-    title = FilePath(filename).stem
 
     questions = [
         dict(id="q1", kind="concept",
              prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
              hint="关注开篇的问题陈述和研究动机。",
-             source=dict(label="材料开头", detail="问题/引言部分"),
-             answer_guide="准确描述研究问题和动机。", max_score=4),
+             source=dict(label="材料开头"), answer_guide="准确描述研究问题和动机。", max_score=4),
         dict(id="q2", kind="method",
              prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
              hint="关注方法部分的具体步骤和公式。",
-             source=dict(label="材料方法部分", detail="核心方法描述"),
-             answer_guide="准确描述方法的关键步骤。", max_score=4),
+             source=dict(label="材料方法部分"), answer_guide="准确描述方法的关键步骤。", max_score=4),
         dict(id="q3", kind="evidence",
              prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
              hint="区分论文结论和你自己的推断。",
-             source=dict(label="材料结论部分", detail="结论与讨论"),
-             answer_guide="指出结论、证据和局限。", max_score=3),
+             source=dict(label="材料结论部分"), answer_guide="指出结论、证据和局限。", max_score=3),
     ]
 
     material = dict(
         id=mid, title=title,
-        subtitle=f"上传材料 · {source_type.upper()} · {len(source_text)} 字",
+        subtitle=f"上传材料 · {source_type.upper()}",
         source_type=source_type, estimated_minutes=20, difficulty="自助探索",
         progress=0, created_at=datetime.now(UTC).isoformat(),
         map=[
@@ -817,21 +723,10 @@ async def upload_material(file: UploadFile = File(...)):
             dict(key="limitations", title="局限与边界", summary="请指出方法或结论的适用范围。", source=dict(label="材料结尾")),
         ],
         learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
-        sections=[dict(id="full", title="上传材料全文", eyebrow=f"{filename}",
-                       strict_track=source_text[:10000],
-                       companion_track="这是你上传的材料全文。标注原文位置时使用你看到的页码或段落。",
-                       source=dict(label="上传文件"))],
+        sections=[],
         questions=questions,
     )
     store.seed_senet(material)
-
-    # Persist to Supabase
-    if _supa_enabled():
-        try:
-            _supa_post("materials", {"id": mid, "payload_json": material}, on_conflict="id")
-        except Exception:
-            pass
-
     return material
 
 
