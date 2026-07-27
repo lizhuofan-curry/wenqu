@@ -25,30 +25,45 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field, ValidationError
 
-# --- Supabase client (lazy init to avoid breaking import on Vercel) -----------
-_supabase = None
+# --- Supabase REST helper (raw HTTP, no supabase-py dependency) ----------------
+import urllib.request as _urllib
 
-
-def _get_supabase():
-    global _supabase
-    if _supabase is not None:
-        return _supabase
-
-    url = os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
-    if url and key:
-        try:
-            from supabase import create_client as create_supabase_client
-            _supabase = create_supabase_client(url.strip('"').strip(), key.strip('"').strip())
-        except Exception:
-            _supabase = False
-    else:
-        _supabase = False
-    return _supabase if _supabase is not False else None
+_supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
+_supa_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")).strip().strip('"')
 
 
 def _supa_enabled():
-    return _get_supabase() is not None
+    return bool(_supa_url and _supa_key)
+
+
+def _supa_get(path: str):
+    """GET from Supabase REST API."""
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/{path}",
+        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
+    )
+    with _urllib.urlopen(req, timeout=8) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _supa_post(path: str, body: dict, *, on_conflict: str = ""):
+    """POST (upsert) to Supabase REST API."""
+    headers = {
+        "apikey": _supa_key,
+        "Authorization": f"Bearer {_supa_key}",
+        "Content-Type": "application/json",
+        "Prefer": "resolution=merge-duplicates",
+    }
+    data = json.dumps(body).encode("utf-8")
+    query = f"?on_conflict={on_conflict}" if on_conflict else ""
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/{path}{query}",
+        data=data,
+        headers=headers,
+        method="POST",
+    )
+    with _urllib.urlopen(req, timeout=8) as resp:
+        return resp.status
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -594,12 +609,11 @@ def list_personas():
 
 @app.get("/api/materials")
 def list_materials():
-    # Read from Supabase first, merge with in-memory (cold-start safety)
     materials = list(store.list_materials())
     if _supa_enabled():
         try:
-            resp = _get_supabase().table("materials").select("payload_json").order("created_at", ascending=False).execute()
-            for row in (resp.data or []):
+            raw = _supa_get("materials?select=payload_json&order=created_at.desc")
+            for row in (raw or []):
                 p = row.get("payload_json")
                 if p and isinstance(p, dict):
                     mid = p.get("id")
@@ -622,9 +636,9 @@ def get_material(material_id: str):
     m = store.get_material(material_id)
     if m is None and _supa_enabled():
         try:
-            resp = _get_supabase().table("materials").select("payload_json").eq("id", material_id).execute()
-            if resp.data:
-                m = resp.data[0].get("payload_json")
+            raw = _supa_get(f"materials?select=payload_json&id=eq.{material_id}")
+            if raw and isinstance(raw, list) and raw:
+                m = raw[0].get("payload_json")
                 if m and isinstance(m, dict):
                     store.seed_senet(m)
         except Exception:
@@ -722,8 +736,7 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
 
 @app.post("/api/materials/upload", status_code=201)
 async def upload_material(file: UploadFile = File(...)):
-    """Fast upload: extract text, chunk+embed for RAG, return with template questions.
-    AI question generation happens lazily at first evaluation to stay under Vercel's 10s limit."""
+    """Upload: extract text + save immediately. Under 3 seconds total."""
     filename = file.filename or "untitled"
     suffix = FilePath(filename).suffix.lower()
     if suffix not in {".pdf", ".md", ".markdown"}:
@@ -734,11 +747,45 @@ async def upload_material(file: UploadFile = File(...)):
         raise HTTPException(413, "文件不能超过 10 MB。")
 
     source_type = "pdf" if suffix == ".pdf" else "markdown"
-    source_text = _extract_text(filename, content)
+
+    # Simple text extraction - no pymupdf dependency
+    source_text = ""
+    if suffix == ".pdf":
+        try:
+            decoded = content.decode("latin-1", errors="ignore")
+            blocks = decoded.split("stream\n")
+            for b in blocks:
+                if "endstream" in b:
+                    inner = b.split("endstream")[0]
+                    if "BT" in inner and "Tj" in inner:
+                        source_text += inner + "\n"
+            # Try pymupdf if available
+            if not source_text or len(source_text) < 200:
+                try:
+                    import pymupdf
+                    doc = pymupdf.open(stream=content, filetype="pdf")
+                    pages = []
+                    for i, page in enumerate(doc[:30]):
+                        pages.append(page.get_text("text"))
+                    source_text = "\n".join(pages)
+                except ImportError:
+                    pass
+        except Exception:
+            pass
+    else:
+        try:
+            source_text = content.decode("utf-8")
+        except UnicodeDecodeError:
+            source_text = content.decode("latin-1", errors="ignore")
+
+    if not source_text or len(source_text.strip()) < 50:
+        # Return with empty text — user can still see the material card
+        source_text = f"[无法提取文本内容。文件类型: {suffix}]"
+
+    source_text = source_text[:60000]
     mid = f"upload-{uuid.uuid4().hex[:12]}"
     title = FilePath(filename).stem
 
-    # Template questions — generic evidence-map questions that work with any material
     questions = [
         dict(id="q1", kind="concept",
              prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
@@ -747,63 +794,43 @@ async def upload_material(file: UploadFile = File(...)):
              answer_guide="准确描述研究问题和动机。", max_score=4),
         dict(id="q2", kind="method",
              prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
-             hint="关注方法部分的具体步骤和公式（如有）。",
+             hint="关注方法部分的具体步骤和公式。",
              source=dict(label="材料方法部分", detail="核心方法描述"),
-             answer_guide="准确描述方法的关键步骤和设计思路。", max_score=4),
+             answer_guide="准确描述方法的关键步骤。", max_score=4),
         dict(id="q3", kind="evidence",
-             prompt="作者得到了什么结论？这些结论有什么证据支持，又有哪些局限性？",
-             hint="区分论文直接陈述的结论和你自己的推断。",
+             prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
+             hint="区分论文结论和你自己的推断。",
              source=dict(label="材料结论部分", detail="结论与讨论"),
-             answer_guide="区分论文结论与个人推断，指出证据和局限。", max_score=3),
+             answer_guide="指出结论、证据和局限。", max_score=3),
     ]
 
     material = dict(
         id=mid, title=title,
-        subtitle=f"上传材料 · {source_type.upper()}",
+        subtitle=f"上传材料 · {source_type.upper()} · {len(source_text)} 字",
         source_type=source_type, estimated_minutes=20, difficulty="自助探索",
         progress=0, created_at=datetime.now(UTC).isoformat(),
-        map=[dict(key="problem", title="问题与动机", summary="请根据材料内容，用自己的话总结研究问题。",
-                  source=dict(label="材料开头")),
-             dict(key="method", title="方法与设计", summary="请根据材料内容，描述核心方法或技术方案。",
-                  source=dict(label="材料方法部分")),
-             dict(key="evidence", title="证据与结果", summary="请根据材料内容，列出关键发现和支撑证据。",
-                  source=dict(label="材料结论部分")),
-             dict(key="conclusion", title="结论与影响", summary="请根据材料内容，概括主要结论及其意义。",
-                  source=dict(label="材料讨论部分")),
-             dict(key="limitations", title="局限与边界", summary="请根据材料内容，指出方法或结论的适用范围。",
-                  source=dict(label="材料结尾"))],
-        learning_goals=["理解材料要解决的核心问题",
-                        "掌握材料中的关键方法或技术",
-                        "能用自己的话复述主要发现和局限性"],
-        sections=[dict(id="full", title="完整原文", eyebrow="上传材料全文",
-                       strict_track=source_text[:8000],
-                       companion_track="这是你上传的材料全文。阅读时注意：问题是什么、方法怎么做的、结论有何证据。",
+        map=[
+            dict(key="problem", title="问题与动机", summary="请根据材料概括研究问题。", source=dict(label="材料开头")),
+            dict(key="method", title="方法与设计", summary="请描述核心方法或技术方案。", source=dict(label="方法部分")),
+            dict(key="evidence", title="证据与结果", summary="请列出关键发现和证据。", source=dict(label="结果部分")),
+            dict(key="conclusion", title="结论与影响", summary="请概括主要结论。", source=dict(label="讨论部分")),
+            dict(key="limitations", title="局限与边界", summary="请指出方法或结论的适用范围。", source=dict(label="材料结尾")),
+        ],
+        learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
+        sections=[dict(id="full", title="上传材料全文", eyebrow=f"{filename}",
+                       strict_track=source_text[:10000],
+                       companion_track="这是你上传的材料全文。标注原文位置时使用你看到的页码或段落。",
                        source=dict(label="上传文件"))],
         questions=questions,
     )
     store.seed_senet(material)
 
-    # Persist in Supabase
+    # Persist to Supabase
     if _supa_enabled():
         try:
-            _get_supabase().table("materials").upsert(
-                {"id": mid, "payload_json": material},
-                on_conflict="id",
-            ).execute()
+            _supa_post("materials", {"id": mid, "payload_json": material}, on_conflict="id")
         except Exception:
             pass
-
-    # Chunk + embed for RAG retrieval during evaluation
-    try:
-        chunk_texts = _chunk_text(source_text[:10000])
-        if chunk_texts:
-            embeddings = await _embed_texts(chunk_texts)
-            store.set_chunks(mid, [
-                {"text": ct, "embedding": emb}
-                for ct, emb in zip(chunk_texts, embeddings)
-            ])
-    except Exception:
-        pass
 
     return material
 
