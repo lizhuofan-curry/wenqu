@@ -106,6 +106,27 @@
 ### 涉及文件
 `lib/cloud.ts`（重写）, `components/Shell.tsx`, `components/ArchiveView.tsx`, `components/MaterialsView.tsx`, `lib/storage.ts`, `App.tsx`, `package.json`, `.env.example`, `vercel.json`
 
+## 2026-07-27｜DeepSeek AI 真实评分上线 ✅
+
+- 在 `api/index.py` 中接入 DeepSeek API（通过 OpenAI SDK 兼容模式），实现语义级评分：
+  - 当 `DEEPSEEK_API_KEY` 已配置时，`evaluate_session` 调用 `evaluate_with_deepseek()` 走 AI 评分
+  - AI 失败时自动回退到规则引擎（`evaluate_senet`），不影响用户体验
+  - 使用 `AIEvaluationResult` Pydantic Schema 约束结构输出，`response_format={"type": "json_object"}`
+- 新增 `AIEvaluationResult` / `AIQuestionResult` / `AIRetellingResult` 三个轻量 Pydantic 模型
+- `api/requirements.txt` 新增 `openai>=1.100` 依赖
+- 评分对比：
+
+| 维度 | 规则引擎（之前） | DeepSeek AI（现在） |
+|---|---|---|
+| 评分方式 | 关键词匹配 | 语义理解 |
+| 反馈内容 | 固定模板 | 针对具体回答定制 |
+| 错因诊断 | 关键词缺失标签 | AI 推断真实误解 |
+| 掌握度 | 关键词覆盖率 × 权重 | AI 综合评估 |
+| 复述评估 | 步骤覆盖计数 | 理解深度 + 覆盖 |
+
+### 涉及文件
+`api/index.py`, `api/requirements.txt`
+
 ## 2026-07-27｜Vercel 后端部署 + DeepSeek API 配置 + 生产站修复 ✅
 
 ### 背景
@@ -253,7 +274,7 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 [x] Vercel Python Serverless 后端在线评分
 [x] DeepSeek API Key 已安全注入生产环境
 [x] 跨设备数据同步验收（手机→电脑档案互通）
-[ ] 真实 DeepSeek AI 评分调用（非纯规则）
+[x] 真实 DeepSeek AI 评分调用（语义评估，非纯关键词）
 [ ] 邀请第一位真实学习者
 [ ] 邀请首位项目共创者
 [ ] 完成 5 人首轮学习测试
@@ -437,10 +458,10 @@ v.3 纸上书房已合并（PR #19）并部署至 https://wenqu-reading-room.ver
 2. 监控 API 冷启动延迟和错误率；
 3. GitHub 推送恢复后同步剩余提交。
 
-### P1｜真实 DeepSeek AI 评分
-1. 后端 `evaluate_session` 中 SENet 走规则，非 SENet 走 `evaluate_with_ai`（调用 DeepSeek API）；
-2. 验证结构化输出（Pydantic 二次校验）和证据引用；
-3. 加入调用频率和费用保护。
+### P1｜真实 DeepSeek AI 评分 ✅
+1. ~~后端 `evaluate_session` 中 SENet 走规则，非 SENet 走 `evaluate_with_ai`~~ → 已上线：SENet 优先走 DeepSeek，失败回退规则
+2. ~~验证结构化输出（Pydantic 二次校验）和证据引用~~ → `AIEvaluationResult.model_validate_json()` 二次校验
+3. 加入调用频率和费用保护（待做）
 
 ### P2｜首轮真实用户验证
 1. 邀请第一位目标学习者完成 SENet；

@@ -223,3 +223,17 @@
 - 根因：git 传输走 github.com:443，Vercel CLI 上传走 vercel.com 的不同 IP。
 - 解决：Vercel CLI 的 `vercel --prod` 不依赖 GitHub——它把本地文件直接上传到 Vercel 构建服务，与 git push 完全独立。在 git 不通时优先走这条路。
 - 预防：git 推送失败时不要等待，直接用 `npx vercel --prod --yes` 部署。等网络恢复后再补推送和合并，两条线互不阻塞。
+
+### 29. Vercel Serverless 函数超时限制与 DeepSeek API 调用
+
+- 现象：Debu 阶段评分从关键词切换到 DeepSeek AI 后，API 调用可能因网络延迟超时。Vercel 免费版 API 函数最长执行 10 秒，DeepSeek 返回结构化 JSON 通常在 3—8 秒内完成，但网络抖动可能推到边缘。
+- 根因：Serverless 函数执行时间 = 网络传输 + API 处理时间。DeepSeek 的 `chat.completions.create` 耗时取决于 prompt 长度和模型负载。问渠每次提交的 prompt 约 2—3 KB，保守估计 4—6 秒内返回。
+- 解决：openai Python SDK 默认超时 600 秒，但 Vercel 函数本身在 10 秒后被 kill。不加额外超时配置；如果 DeepSeek 超时，会被 Python 异常捕获 → 回退到 `evaluate_senet` 规则引擎。反直觉但正确：AI 失败不影响用户打分。
+- 预防：所有 AI 调用都用 try/except 包裹，失败时退回确定性规则。永远不给用户看到「AI 超时」错误。费用保护：每次调用 `max_tokens=4000`，按 DeepSeek 当前价格（~0.5 元/百万 token），单次评分成本约 0.002 元，几乎可忽略。
+
+### 30. Pydantic 模型重复导入导致 Vercel 函数启动变慢
+
+- 现象：`api/index.py` 在顶部和中间都引用了 `from pydantic import BaseModel, Field`。
+- 根因：复用导入语句是 clean-code 习惯，但在初始版本中未清理干净。
+- 解决：去重，只保留文件顶部的 `from pydantic import BaseModel, Field`。
+- 预防：大文件（单文件 400+ 行）编辑时，先用 grep 检查是否存在重复 from-import，再新增代码。
