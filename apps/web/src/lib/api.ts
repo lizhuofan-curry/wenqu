@@ -1,5 +1,4 @@
 import type {
-  ArchiveItem,
   Material,
   MaterialSummary,
   Persona,
@@ -103,11 +102,8 @@ export const api = {
       () => request<Material>(`/materials/${id}`),
       () => ({ ...demoMaterial, id }),
     ),
-  archive: () =>
-    withDemo(
-      () => request<ArchiveItem[]>("/archive"),
-      async () => (await loadCloudArchive()) ?? loadLocalArchive(),
-    ),
+  archive: async () =>
+    (await loadCloudArchive()) ?? loadLocalArchive(),
   createSession: (materialId: string, personaId: string) =>
     withDemo(
       () =>
