@@ -4,19 +4,43 @@
 
 最后更新：2026-07-27
 
-## 2026-07-27｜前端评审批次 A 流程对齐（未改代码）
+## 2026-07-27｜前端评审批次 A 代码修复完成 ✅
 
-- 已完整复读 `docs/progress/lessons-learned.md`、`AGENTS.md`、`docs/STRUCTURE.md`、`docs/workflow/content-workflow.md`；
-- 已通读桌面两份报告：《问渠前端代码评审报告》（批次 A 五项 P0）与《问渠项目对话纪要-2026-07-27》；
-- 逐文件只读核对工作区，确认五项 P0 全部仍处于原始待修状态，评审报告末尾“部分修改已完成”的口径与工作区不符：
-  - A1 `apps/web/src/lib/api.ts:41-44` 生产构建默认演示模式：未修；
-  - A2 `api.ts:76` 的 `||` 与 `cloud.ts:200` 的 `return []`：未修；
-  - A3 `styles/pages.css:731-735` 掌握环硬编码 72% + `InsightsView.tsx:72` 未传 `--score`：未修；
-  - A4 `api.ts:52-54` 网络抖动后 `useDemo = true` 永久降级：未修；
-  - A5 根 `package.json:6,9-12` Windows 反斜杠路径：未修；
-- 本轮按要求只做状态核对与记录，未修改任何代码；
-- 修复计划：A1 → A2 → A3 → A4 → A5 顺序小步提交，全部完成后运行 `pnpm check` 验证，再更新本文档与复盘文件；
-- 顺带处理：登记 Git safe.directory 解决新会话 `dubious ownership` 报错（详见 lessons-learned 第 19 条）。
+- 流程对齐完成后，按 A1→A2→A3→A4→A5 顺序完成全部五项 P0 修复：
+
+### A1 生产构建默认演示模式
+- `apps/web/src/lib/api.ts:41-43`：删除 `import.meta.env.PROD && import.meta.env.VITE_DEMO_MODE !== “false”` 分支，演示模式仅 `VITE_DEMO_MODE === “true”` 或 `file:` 时启用；
+- 新增 `isDemo()` 导出，便于 UI 读取演示状态；
+- `apps/web/src/components/Shell.tsx`：新增 `demoMode` prop + 金色「演示模式」标识条；
+- `apps/web/src/styles/shell.css`：新增 `.demo-bar` 样式。
+
+### A2 归档真值性 bug
+- `apps/web/src/lib/cloud.ts:200`：未登录时 `return []` → `return null`；
+- `apps/web/src/lib/api.ts:76`：`||` → `??`，空数组不再遮蔽本地档案。
+
+### A3 掌握环视觉造假
+- `apps/web/src/styles/pages.css:731-735`：删除 `.mastery-ring` 硬编码 `72%` 覆写，使用父规则 `var(--score, 72)`；
+- `apps/web/src/components/InsightsView.tsx:72`：传入 `style={{ “--score”: String(averageMastery) }}`。
+
+### A4 网络降级可恢复
+- `apps/web/src/lib/api.ts:53-57`：删 `useDemo = true` 永久翻转，改为 `degraded = true` 单次标记；
+- 新增 `isDegraded()` 导出；
+- `apps/web/src/components/Shell.tsx`：新增 `degraded` prop + 朱砂色「网络连接失败」提示条；
+- `apps/web/src/styles/shell.css`：新增 `.degraded-bar` 样式。
+
+### A5 跨平台脚本
+- 新增 `scripts/py.mjs`：Node 脚本跨平台探测 venv Python 路径（先 Windows `Scripts/`，后 POSIX `bin/`）；
+- 根 `package.json`：`dev`/`test:api`/`check:api`/`db:migrate`/`db:check` 全部改为 `node scripts/py.mjs` 驱动。
+
+### 验证结果
+- TypeScript `--force`：零错误；
+- Vite 生产构建：通过（CSS 41 kB, JS 250 kB）；
+- Ruff：All checks passed；
+- Pytest：1 passed（健康检查通过），3 个 PermissionError（与本次改动无关的沙箱跨账户临时目录权限问题，详见 lessons-learned 第 22 条）；
+- `py.mjs` 跨平台：Windows 上正确找到并驱动 Python venv。
+
+### 涉及文件
+`lib/api.ts`, `lib/cloud.ts`, `components/Shell.tsx`, `components/InsightsView.tsx`, `styles/pages.css`, `styles/shell.css`, `App.tsx`, `package.json`, `.gitignore`, `scripts/py.mjs`（新）
 
 ## 2026-07-27｜当前对话已整理导出
 

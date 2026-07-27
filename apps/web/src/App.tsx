@@ -8,7 +8,7 @@ import { MisconceptionsView } from "./components/MisconceptionsView";
 import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
-import { api } from "./lib/api";
+import { api, isDemo, isDegraded } from "./lib/api";
 import { loadProfile } from "./lib/storage";
 import {
   cloudEnabled,
@@ -154,6 +154,8 @@ function App() {
         setAuthOpen(true);
       }}
       cloudEnabled={cloudEnabled}
+      demoMode={isDemo()}
+      degraded={isDegraded()}
       onSignOut={() => {
         void logoutCloudAccount()
           .then(() => {

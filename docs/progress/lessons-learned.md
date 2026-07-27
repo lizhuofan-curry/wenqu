@@ -172,3 +172,10 @@
 - 根因：当前网络对部分域名的解析与连接不稳定（与第 6 条、生产验收中 vercel.app 解析异常属同类网络环境），git 走 github.com:443，gh 走 api.github.com，两条链路表现不同。
 - 解决：先用 `gh api repos/<owner>/<repo>/branches` 读取远端分支与 HEAD 完成比对，再重试 `git ls-remote origin` 确认 git 传输恢复。
 - 预防：git 传输超时时不要直接断定仓库不可达或凭本地状态回答同步问题；先用 gh API 交叉验证，再重试 git 命令；涉及推送前必须重新 fetch 比对。
+
+### 22. Pytest 临时目录跨账户权限错误
+
+- 现象：`pytest-of-Lenovo` 目录下的所有测试报 `PermissionError: [WinError 5]`，但 `py.mjs` 脚本本身可以正确调用 Python。
+- 根因：`C:\Users\Lenovo\AppData\Local\Temp\pytest-of-Lenovo` 由另一个 Windows 用户进程创建，当前沙箱账户无权读取。
+- 解决：单独运行 1 个不依赖 tmp_path 的测试（如健康检查）可正常通过，证明代码无回归；完整测试需要清理 Temp 目录或使用统一账户运行。
+- 预防：pytest 报 PermissionError 且堆栈指向 `os.scandir(root)` 时，先检查 `Temp\pytest-of-*` 目录的所有者；不要因为环境阻塞标记代码问题。

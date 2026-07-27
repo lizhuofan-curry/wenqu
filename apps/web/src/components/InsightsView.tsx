@@ -69,7 +69,7 @@ export function InsightsView({
         <section className="panel mastery-panel">
           <p className="eyebrow">能力雷达</p>
           <h3>你最稳定的学习动作</h3>
-          <div className="mastery-ring">
+          <div className="mastery-ring" style={{ "--score": String(averageMastery) } as React.CSSProperties}>
             <strong>{averageMastery}</strong>
             <span>综合掌握</span>
           </div>

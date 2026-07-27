@@ -40,9 +40,18 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 
 let useDemo =
   import.meta.env.VITE_DEMO_MODE === "true" ||
-  (import.meta.env.PROD && import.meta.env.VITE_DEMO_MODE !== "false") ||
   window.location.protocol === "file:";
 let latestDemoSession: Session | undefined = loadActiveSession();
+
+let degraded = false;
+
+export function isDemo(): boolean {
+  return useDemo;
+}
+
+export function isDegraded(): boolean {
+  return degraded;
+}
 
 async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T>) {
   if (useDemo) return fallback();
@@ -50,7 +59,7 @@ async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T
     return await live();
   } catch (error) {
     if (error instanceof TypeError) {
-      useDemo = true;
+      degraded = true;
       return fallback();
     }
     throw error;
@@ -73,7 +82,7 @@ export const api = {
   archive: () =>
     withDemo(
       () => request<ArchiveItem[]>("/api/archive"),
-      async () => (await loadCloudArchive()) || loadLocalArchive(),
+      async () => (await loadCloudArchive()) ?? loadLocalArchive(),
     ),
   createSession: (materialId: string, personaId: string) =>
     withDemo(
