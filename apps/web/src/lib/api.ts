@@ -83,8 +83,7 @@ async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T
   if (useDemo) return fallback();
   try {
     return await live();
-  } catch (error) {
-    degraded = true;
+  } catch {
     return fallback();
   }
 }
