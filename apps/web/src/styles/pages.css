@@ -469,19 +469,11 @@
   border-radius: 6px;
   background: transparent;
   color: var(--ink-faint);
-  opacity: 0;
-  transition: opacity 150ms var(--ease), background 150ms var(--ease), color 150ms var(--ease);
+  transition: background 150ms var(--ease), color 150ms var(--ease);
 }
 
 .card-regenerate { right: 46px; }
 .card-delete { right: 10px; }
-
-.library-card:hover .card-delete,
-.library-card:hover .card-regenerate,
-.material-card:hover .card-delete,
-.material-card:hover .card-regenerate {
-  opacity: 1;
-}
 
 .card-regenerate:hover {
   background: var(--indigo-soft);
@@ -494,24 +486,46 @@
 }
 
 /* ── Upload progress bar ── */
-.upload-progress {
+.upload-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: color-mix(in srgb, var(--paper-dark) 85%, transparent);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 200ms var(--ease);
+}
+
+.upload-dialog {
+  display: grid;
   gap: 18px;
-  padding: 16px 24px;
-  margin-bottom: 18px;
-  border-radius: var(--radius-card);
+  padding: 40px;
+  max-width: 420px;
+  text-align: center;
   background: var(--card);
-  border: 1px solid var(--line);
-  flex-wrap: wrap;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-float);
+}
+
+.upload-dialog strong {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.upload-dialog p {
+  color: var(--ink-soft);
+  font-size: 14px;
 }
 
 .upload-steps {
-  display: flex;
-  gap: 20px;
+  display: grid;
+  gap: 8px;
   font-size: 13px;
   color: var(--ink-faint);
+  text-align: left;
 }
 
 .upload-steps span.done {

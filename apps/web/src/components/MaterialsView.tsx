@@ -84,17 +84,22 @@ export function MaterialsView({ materials, busy, onStart, onUpload, onDelete, on
         />
       </header>
       {busy && (
-        <div className="upload-progress">
-          <Loader2 className="spin" size={20} />
-          <div className="upload-steps">
-            {stepLabels.map((label, i) => (
-              <span key={label} className={i === stepIndex ? "active" : i < stepIndex ? "done" : ""}>
-                {label}
-              </span>
-            ))}
-          </div>
-          <div className="upload-track">
-            <span style={{ width: `${((stepIndex + 1) / stepLabels.length) * 100}%` }} />
+        <div className="upload-overlay">
+          <div className="upload-dialog">
+            <Loader2 className="spin" size={36} />
+            <strong>正在处理文件…</strong>
+            <p>提取文本、生成地图、AI 翻译、制定题目</p>
+            <div className="upload-steps">
+              {stepLabels.map((label, i) => (
+                <span key={label} className={i === stepIndex ? "active" : i < stepIndex ? "done" : ""}>
+                  {i < stepIndex ? "✓ " : i === stepIndex ? "● " : "○ "}
+                  {label}
+                </span>
+              ))}
+            </div>
+            <div className="upload-track">
+              <span style={{ width: `${((stepIndex + 1) / stepLabels.length) * 100}%` }} />
+            </div>
           </div>
         </div>
       )}
