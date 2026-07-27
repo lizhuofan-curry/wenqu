@@ -11,6 +11,7 @@ import hashlib
 import os
 import sys
 import uuid
+import urllib.request as _urllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Dict, List
@@ -26,7 +27,61 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field
 
-# --- Config (reads from Vercel env vars, no .env.local needed) ----------------
+# --- Supabase REST helper (raw HTTP) ------------------------------------------
+_supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
+_supa_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")).strip().strip('"')
+
+
+def _supa_ok():
+    return bool(_supa_url and _supa_key)
+
+
+def _supa_get(path: str):
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/{path}",
+        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
+    )
+    with _urllib.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def _supa_up(table: str, body: dict):
+    data = json.dumps(body).encode("utf-8")
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/{table}?on_conflict=id",
+        data=data,
+        headers={
+            "apikey": _supa_key, "Authorization": f"Bearer {_supa_key}",
+            "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates",
+        },
+        method="POST",
+    )
+    _urllib.urlopen(req, timeout=10)
+
+
+def _supa_del(table: str, mid: str):
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/{table}?id=eq.{mid}",
+        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
+        method="DELETE",
+    )
+    _urllib.urlopen(req, timeout=10)
+
+
+def _load_supa_materials():
+    """Load materials from Supabase into in-memory store (called on cold start)."""
+    if not _supa_ok():
+        return
+    try:
+        rows = _supa_get("materials?select=payload_json&order=created_at.asc")
+        for row in (rows or []):
+            p = row.get("payload_json")
+            if p and isinstance(p, dict) and p.get("id") and not store.get_material(p["id"]):
+                store.seed_senet(p)
+    except Exception:
+        pass
+
+# --- Config -------------------------------------------------------------------
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "问渠 API"
@@ -161,6 +216,7 @@ SENET_MATERIAL = dict(
 )
 
 store.seed_senet(SENET_MATERIAL)
+_load_supa_materials()  # Restore uploaded materials from Supabase on cold start
 
 # Pre-chunk SENet for faster AI evaluation (built once per cold start)
 def _seed_senet_chunks():
@@ -570,19 +626,27 @@ def list_personas():
 
 @app.get("/api/materials")
 def list_materials():
+    materials = list(store.list_materials())
+    # On cold start without Supabase load, try again
+    if len(materials) <= 1 and _supa_ok():
+        _load_supa_materials()
+        materials = list(store.list_materials())
     return [
         dict(
             id=m["id"], title=m["title"], subtitle=m["subtitle"],
             source_type=m["source_type"], estimated_minutes=m["estimated_minutes"],
             difficulty=m["difficulty"], progress=m["progress"], created_at=m["created_at"],
         )
-        for m in store.list_materials()
+        for m in materials
     ]
 
 
 @app.get("/api/materials/{material_id}")
 def get_material(material_id: str):
     m = store.get_material(material_id)
+    if m is None and _supa_ok():
+        _load_supa_materials()
+        m = store.get_material(material_id)
     if m is None:
         raise HTTPException(404, "材料不存在。")
     return m
@@ -820,11 +884,23 @@ async def upload_material(file: UploadFile):
     ai_map = (ai_data.get("map_summaries") or {}) if ai_data else {}
     map_keys = ["problem", "method", "evidence", "conclusion", "limitations"]
     map_titles = ["问题与动机", "方法与设计", "证据与结果", "结论与影响", "局限与边界"]
+    # Position each map node summary at a different part of the text
+    map_positions = [0, 0.15, 0.35, 0.60, 0.78]  # fraction into source_text
     map_items = []
-    for key, mtitle in zip(map_keys, map_titles):
+    for key, mtitle, pos in zip(map_keys, map_titles, map_positions):
         summary = ai_map.get(key, "") if isinstance(ai_map, dict) else ""
+        if not summary and source_text and len(source_text) > 100:
+            start = int(len(source_text) * pos)
+            chunk = source_text[start:start + 300].strip()
+            # Try to break at a sentence boundary
+            for sep in [". ", ".\n", "。", "\n\n", "\n", ". "]:
+                dot = chunk.rfind(sep)
+                if dot > 60:
+                    chunk = chunk[:dot + len(sep)].strip()
+                    break
+            summary = chunk if len(chunk) > 40 else source_text[start:start + 300].strip()
         if not summary:
-            summary = source_text[:200] if key == "problem" else "阅读材料后自行总结"
+            summary = "阅读材料后自行总结"
         map_items.append(dict(key=key, title=mtitle, summary=summary, source=dict(label="上传文件")))
 
     # --- Smart questions (AI or generic) ------------------------------------
@@ -867,6 +943,13 @@ async def upload_material(file: UploadFile):
     )
     store.seed_senet(material)
 
+    # Persist to Supabase so material survives cold starts
+    if _supa_ok():
+        try:
+            _supa_up("materials", {"id": mid, "payload_json": material})
+        except Exception:
+            pass
+
     # RAG chunks
     try:
         chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
@@ -890,6 +973,11 @@ def delete_material(material_id: str):
         raise HTTPException(404, "材料不存在。")
     store._materials.pop(material_id, None)
     store._chunks.pop(material_id, None)
+    if _supa_ok():
+        try:
+            _supa_del("materials", material_id)
+        except Exception:
+            pass
     return {"deleted": material_id}
 
 
