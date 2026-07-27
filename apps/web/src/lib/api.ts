@@ -193,7 +193,18 @@ export const api = {
   material: (id: string) =>
     withDemo(
       () => request<Material>(`/materials/${id}`),
-      () => ({ ...demoMaterial, id }),
+      () =>
+        id === "senet-cvpr-2018"
+          ? { ...demoMaterial, id }
+          : {
+              ...demoMaterial,
+              id,
+              title: "材料需要后端支持",
+              subtitle: "该材料需通过 AI 解析生成内容，当前为演示模式。请在后端已启动的环境中打开。",
+              learning_goals: ["请在后端环境中重新上传此材料。"],
+              map: [],
+              sections: [],
+            },
     ),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),

@@ -20,9 +20,10 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
+from pathlib import Path as FilePath
+from pydantic import BaseModel, Field, ValidationError
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -466,6 +467,146 @@ def get_material(material_id: str):
     return m
 
 
+# --- Upload & AI material generation ------------------------------------------
+
+def _extract_text(filename: str, content: bytes) -> str:
+    """Extract text from PDF or Markdown. Falls back gracefully."""
+    suffix = FilePath(filename).suffix.lower()
+    if suffix in {".md", ".markdown"}:
+        try:
+            return content.decode("utf-8")[:60000]
+        except UnicodeDecodeError:
+            raise HTTPException(400, "Markdown 文件必须使用 UTF-8 编码。")
+
+    if suffix == ".pdf":
+        # Try pymupdf first
+        try:
+            import pymupdf
+            doc = pymupdf.open(stream=content, filetype="pdf")
+            if doc.page_count > 30:
+                raise HTTPException(400, "暂不支持超过 30 页的 PDF。")
+            pages = []
+            for i, page in enumerate(doc):
+                pages.append(f"\n[第 {i+1} 页]\n{page.get_text('text')}")
+            text = "".join(pages).strip()
+            if len(text) < 200:
+                raise HTTPException(400, "没有提取到足够文字，可能为扫描版 PDF，暂不支持 OCR。")
+            return text[:60000]
+        except ImportError:
+            # Fallback: try basic extraction
+            try:
+                decoded = content.decode("latin-1", errors="ignore")
+                text_parts = []
+                for chunk in decoded.split("BT"):
+                    if "Tj" in chunk or "TJ" in chunk:
+                        text_parts.append(chunk)
+                if text_parts:
+                    return "\n".join(text_parts)[:60000]
+            except Exception:
+                pass
+            raise HTTPException(400, "PDF 文本提取失败，建议先转换为 Markdown 格式上传。")
+
+    raise HTTPException(400, "只支持 PDF、.md 和 .markdown 文件。")
+
+
+class MaterialGeneratePayload(BaseModel):
+    title: str
+    subtitle: str
+    estimated_minutes: int
+    difficulty: str
+    map: list[dict]
+    learning_goals: list[str]
+    sections: list[dict]
+    questions: list[dict]
+
+
+async def _generate_material_via_ai(filename: str, text: str) -> dict:
+    """Call DeepSeek to generate learning material from uploaded content."""
+    from openai import OpenAI
+
+    api_key = os.getenv("DEEPSEEK_API_KEY", "")
+    if not api_key:
+        raise HTTPException(400, "DeepSeek API 未配置，暂无法解析新材料。")
+
+    client = OpenAI(
+        api_key=api_key,
+        base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
+        timeout=25.0,
+    )
+    model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
+
+    prompt = f"""根据以下材料生成一个完整的学习包，返回 JSON。
+
+材料文件名: {filename}
+
+材料内容:
+{text[:30000]}
+
+要求:
+- title: 材料标题
+- subtitle: 一句话副标题
+- estimated_minutes: 预估学习分钟数 (10-60)
+- difficulty: 难度标签
+- map: 5 个地图节点，依次为 problem/method/evidence/conclusion/limitations
+- learning_goals: 3 个学习目标
+- sections: 3-4 个学习段，每段含 id/title/eyebrow/strict_track/companion_track/source
+- questions: 3 道理解题，每道含 id/kind/prompt/hint/source/answer_guide/max_score
+
+所有事实必须来自材料原文，source.label 标注页码或章节。用中文。"""
+
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": "你是内容引擎。只输出合法 JSON，不用 Markdown 代码块。"},
+            {"role": "user", "content": prompt},
+        ],
+        response_format={"type": "json_object"},
+        max_tokens=6000,
+    )
+
+    raw = resp.choices[0].message.content
+    if not raw:
+        raise HTTPException(502, "AI 没有返回内容，请重试。")
+
+    parsed = MaterialGeneratePayload.model_validate_json(raw)
+    return parsed.model_dump()
+
+
+@app.post("/api/materials/upload", status_code=201)
+async def upload_material(file: UploadFile = File(...)):
+    filename = file.filename or "untitled"
+    suffix = FilePath(filename).suffix.lower()
+    if suffix not in {".pdf", ".md", ".markdown"}:
+        raise HTTPException(400, "只支持 PDF、.md 和 .markdown 文件。")
+
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "文件不能超过 10 MB。")
+
+    source_type = "pdf" if suffix == ".pdf" else "markdown"
+    source_text = _extract_text(filename, content)
+
+    generated = await _generate_material_via_ai(filename, source_text)
+
+    mid = f"upload-{uuid.uuid4().hex[:12]}"
+    material = dict(
+        id=mid,
+        title=generated.get("title", filename),
+        subtitle=generated.get("subtitle", ""),
+        source_type=source_type,
+        estimated_minutes=generated.get("estimated_minutes", 20),
+        difficulty=generated.get("difficulty", "中等"),
+        progress=0,
+        created_at=datetime.now(UTC).isoformat(),
+        map=generated.get("map", []),
+        learning_goals=generated.get("learning_goals", []),
+        sections=generated.get("sections", []),
+        questions=generated.get("questions", []),
+    )
+    store.seed_senet(material)  # uses same dict-based storage
+    return material
+
+
 @app.post("/api/sessions", status_code=201)
 def create_session(req: SessionCreate):
     m = store.get_material(req.material_id)
@@ -480,7 +621,6 @@ def create_session(req: SessionCreate):
 async def evaluate_session(session_id: str, req: EvaluationRequest):
     s = store.get_session(session_id)
     if s is None:
-        # Cold start: session was lost. Auto-create it so scoring can proceed.
         s = store.create_session(session_id, "senet-cvpr-2018", "huangfeng")
     if s["status"] == "completed":
         raise HTTPException(409, "该学习会话已经完成。")
@@ -488,15 +628,21 @@ async def evaluate_session(session_id: str, req: EvaluationRequest):
     material = store.get_material(s.get("material_id", "senet-cvpr-2018"))
     questions = (material or {}).get("questions", [])
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
+    is_senet = (material or {}).get("id") == "senet-cvpr-2018"
 
     if has_ai and questions:
         try:
             result = await evaluate_with_deepseek(questions, req.answers, req.retelling)
         except Exception:
-            # AI failed — silently fall back to rules
-            result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
-    else:
+            # AI failed — fall back to rules for SENet, error for others
+            if is_senet:
+                result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+            else:
+                raise HTTPException(502, "AI 评分暂时不可用，请重试。")
+    elif is_senet:
         result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+    else:
+        raise HTTPException(502, "DeepSeek API 未配置，无法评分配上传材料。")
 
     return store.complete_session(
         session_id,
