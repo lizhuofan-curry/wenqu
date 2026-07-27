@@ -24,6 +24,18 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field, ValidationError
+from supabase import create_client as create_supabase_client
+
+# --- Supabase client (for persistent materials storage) -----------------------
+_supabase_url = os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+_supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
+_supabase = None
+if _supabase_url and _supabase_key:
+    _supabase = create_supabase_client(_supabase_url, _supabase_key)
+
+
+def _supa_enabled():
+    return _supabase is not None
 
 # --- Config (reads from Vercel env vars, no .env.local needed) ----------------
 @dataclass(frozen=True)
@@ -569,20 +581,41 @@ def list_personas():
 
 @app.get("/api/materials")
 def list_materials():
-    materials = store.list_materials()
+    # Read from Supabase first, merge with in-memory (cold-start safety)
+    materials = list(store.list_materials())
+    if _supa_enabled():
+        try:
+            resp = _supabase.table("materials").select("payload_json").order("created_at", ascending=False).execute()
+            for row in (resp.data or []):
+                p = row.get("payload_json")
+                if p and isinstance(p, dict):
+                    mid = p.get("id")
+                    if mid and not store.get_material(mid):
+                        store.seed_senet(p)
+        except Exception:
+            pass
     return [
         dict(
             id=m["id"], title=m["title"], subtitle=m["subtitle"],
             source_type=m["source_type"], estimated_minutes=m["estimated_minutes"],
             difficulty=m["difficulty"], progress=m["progress"], created_at=m["created_at"],
         )
-        for m in materials
+        for m in store.list_materials()
     ]
 
 
 @app.get("/api/materials/{material_id}")
 def get_material(material_id: str):
     m = store.get_material(material_id)
+    if m is None and _supa_enabled():
+        try:
+            resp = _supabase.table("materials").select("payload_json").eq("id", material_id).execute()
+            if resp.data:
+                m = resp.data[0].get("payload_json")
+                if m and isinstance(m, dict):
+                    store.seed_senet(m)
+        except Exception:
+            pass
     if m is None:
         raise HTTPException(404, "材料不存在。")
     return m
@@ -716,6 +749,16 @@ async def upload_material(file: UploadFile = File(...)):
         sections=generated.get("sections", []), questions=generated.get("questions", []),
     )
     store.seed_senet(material)
+
+    # Persist in Supabase so material survives cold starts
+    if _supa_enabled():
+        try:
+            _supabase.table("materials").upsert(
+                {"id": mid, "payload_json": material},
+                on_conflict="id",
+            ).execute()
+        except Exception:
+            pass
 
     # Chunk + embed for RAG
     all_text = source_text
