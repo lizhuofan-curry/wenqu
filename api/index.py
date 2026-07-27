@@ -722,6 +722,8 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
 
 @app.post("/api/materials/upload", status_code=201)
 async def upload_material(file: UploadFile = File(...)):
+    """Fast upload: extract text, chunk+embed for RAG, return with template questions.
+    AI question generation happens lazily at first evaluation to stay under Vercel's 10s limit."""
     filename = file.filename or "untitled"
     suffix = FilePath(filename).suffix.lower()
     if suffix not in {".pdf", ".md", ".markdown"}:
@@ -733,37 +735,55 @@ async def upload_material(file: UploadFile = File(...)):
 
     source_type = "pdf" if suffix == ".pdf" else "markdown"
     source_text = _extract_text(filename, content)
-
     mid = f"upload-{uuid.uuid4().hex[:12]}"
+    title = FilePath(filename).stem
 
-    # Attempt AI generation; fall back to basic material if it fails
-    try:
-        generated = await _generate_material_via_ai(filename, source_text)
-    except Exception:
-        # AI generation failed — return a basic material so user can still see it
-        basic = dict(
-            id=mid, title=filename, subtitle="AI 生成失败，请重试或使用较短材料。",
-            source_type=source_type, estimated_minutes=15, difficulty="待评估", progress=0,
-            created_at=datetime.now(UTC).isoformat(),
-            map=[dict(key="problem", title="待解析", summary="上传成功，但 AI 自动生成学习包超时。请重试。",
-                      source=dict(label="-"))],
-            learning_goals=[], sections=[], questions=[],
-        )
-        store.seed_senet(basic)
-        return basic
+    # Template questions — generic evidence-map questions that work with any material
+    questions = [
+        dict(id="q1", kind="concept",
+             prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
+             hint="关注开篇的问题陈述和研究动机。",
+             source=dict(label="材料开头", detail="问题/引言部分"),
+             answer_guide="准确描述研究问题和动机。", max_score=4),
+        dict(id="q2", kind="method",
+             prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
+             hint="关注方法部分的具体步骤和公式（如有）。",
+             source=dict(label="材料方法部分", detail="核心方法描述"),
+             answer_guide="准确描述方法的关键步骤和设计思路。", max_score=4),
+        dict(id="q3", kind="evidence",
+             prompt="作者得到了什么结论？这些结论有什么证据支持，又有哪些局限性？",
+             hint="区分论文直接陈述的结论和你自己的推断。",
+             source=dict(label="材料结论部分", detail="结论与讨论"),
+             answer_guide="区分论文结论与个人推断，指出证据和局限。", max_score=3),
+    ]
 
     material = dict(
-        id=mid, title=generated.get("title", filename),
-        subtitle=generated.get("subtitle", ""), source_type=source_type,
-        estimated_minutes=generated.get("estimated_minutes", 20),
-        difficulty=generated.get("difficulty", "中等"), progress=0,
-        created_at=datetime.now(UTC).isoformat(),
-        map=generated.get("map", []), learning_goals=generated.get("learning_goals", []),
-        sections=generated.get("sections", []), questions=generated.get("questions", []),
+        id=mid, title=title,
+        subtitle=f"上传材料 · {source_type.upper()}",
+        source_type=source_type, estimated_minutes=20, difficulty="自助探索",
+        progress=0, created_at=datetime.now(UTC).isoformat(),
+        map=[dict(key="problem", title="问题与动机", summary="请根据材料内容，用自己的话总结研究问题。",
+                  source=dict(label="材料开头")),
+             dict(key="method", title="方法与设计", summary="请根据材料内容，描述核心方法或技术方案。",
+                  source=dict(label="材料方法部分")),
+             dict(key="evidence", title="证据与结果", summary="请根据材料内容，列出关键发现和支撑证据。",
+                  source=dict(label="材料结论部分")),
+             dict(key="conclusion", title="结论与影响", summary="请根据材料内容，概括主要结论及其意义。",
+                  source=dict(label="材料讨论部分")),
+             dict(key="limitations", title="局限与边界", summary="请根据材料内容，指出方法或结论的适用范围。",
+                  source=dict(label="材料结尾"))],
+        learning_goals=["理解材料要解决的核心问题",
+                        "掌握材料中的关键方法或技术",
+                        "能用自己的话复述主要发现和局限性"],
+        sections=[dict(id="full", title="完整原文", eyebrow="上传材料全文",
+                       strict_track=source_text[:8000],
+                       companion_track="这是你上传的材料全文。阅读时注意：问题是什么、方法怎么做的、结论有何证据。",
+                       source=dict(label="上传文件"))],
+        questions=questions,
     )
     store.seed_senet(material)
 
-    # Persist in Supabase so material survives cold starts
+    # Persist in Supabase
     if _supa_enabled():
         try:
             _get_supabase().table("materials").upsert(
@@ -773,12 +793,9 @@ async def upload_material(file: UploadFile = File(...)):
         except Exception:
             pass
 
-    # Chunk + embed for RAG
-    all_text = source_text
-    for section in material.get("sections", []):
-        all_text += "\n" + section.get("strict_track", "") + "\n" + section.get("companion_track", "")
+    # Chunk + embed for RAG retrieval during evaluation
     try:
-        chunk_texts = _chunk_text(all_text)
+        chunk_texts = _chunk_text(source_text[:10000])
         if chunk_texts:
             embeddings = await _embed_texts(chunk_texts)
             store.set_chunks(mid, [
