@@ -29,7 +29,7 @@ export class ApiError extends Error {
 }
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 12_000;
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const url = `${BASE_URL}${path}`;

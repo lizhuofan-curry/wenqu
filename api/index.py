@@ -345,7 +345,7 @@ async def evaluate_with_deepseek(
     if not api_key:
         raise RuntimeError("DEEPSEEK_API_KEY not configured")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=8.0, max_retries=1)
 
     # Build questions context (without revealing full answer_guide verbatim —
     # give enough for evaluation but keep the scoring rubric)
@@ -390,7 +390,7 @@ async def evaluate_with_deepseek(
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
-        max_tokens=4000,
+        max_tokens=2000,
     )
 
     content = response.choices[0].message.content

@@ -545,6 +545,80 @@
   color: var(--bamboo);
 }
 
+/* ── AI evaluation loading overlay ── */
+.eval-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--paper-dark) 85%, transparent);
+  backdrop-filter: blur(12px);
+  animation: fadeIn 200ms var(--ease);
+}
+
+.eval-loader {
+  display: grid;
+  gap: 16px;
+  text-align: center;
+  animation: fadeIn 400ms var(--ease);
+}
+
+.eval-rings {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.eval-rings span {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--indigo);
+  animation: bounce 1.4s infinite ease-in-out both;
+}
+
+.eval-rings span:nth-child(1) { animation-delay: -0.32s; }
+.eval-rings span:nth-child(2) { animation-delay: -0.16s; }
+.eval-rings span:nth-child(3) { animation-delay: 0s; }
+
+.eval-loader strong {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  color: var(--ink);
+}
+
+.eval-loader p {
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+
+.eval-steps {
+  display: flex;
+  gap: 24px;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--ink-faint);
+}
+
+.eval-steps .done { color: var(--bamboo); }
+.eval-steps .active {
+  color: var(--indigo);
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+@keyframes bounce {
+  0%, 80%, 100% { transform: scale(0); opacity: 0.3; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
 .result-hero {
   display: grid;
   max-width: 940px;

@@ -7,7 +7,6 @@ import {
   ChevronRight,
   CircleHelp,
   Quote,
-  RotateCcw,
   Send,
   Sparkles,
   Target,
@@ -300,9 +299,27 @@ export function StudyFlow({
                 )
               }
             >
-              {busy ? "正在对照原文诊断…" : "提交复述并生成诊断"}
-              {busy ? <RotateCcw className="spin" size={18} /> : <Send size={18} />}
+              提交复述并生成诊断
+              <Send size={18} />
             </button>
+            {busy && (
+              <div className="eval-overlay">
+                <div className="eval-loader">
+                  <div className="eval-rings">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <strong>AI 正在分析你的回答…</strong>
+                  <p>逐题对比原文证据，找出理解偏差和遗漏</p>
+                  <div className="eval-steps">
+                    <span className="done">逐题评分</span>
+                    <span className="active">错因诊断</span>
+                    <span>生成反馈</span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </section>
       )}
