@@ -9,11 +9,12 @@ import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
 import { api, isDemo, isDegraded } from "./lib/api";
-import { loadProfile } from "./lib/storage";
+import { loadProfile, saveStudyRecord } from "./lib/storage";
 import {
   cloudEnabled,
   getCloudProfile,
   logoutCloudAccount,
+  saveRecordToCloud,
   watchCloudAuth,
 } from "./lib/cloud";
 import type {
@@ -120,12 +121,32 @@ function App() {
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
   ) {
-    if (!session) return;
+    if (!session || !material || !persona) return;
     setBusy(true);
     setError("");
     try {
       const completed = await api.evaluate(session.id, answers, retelling);
       setSession(completed);
+      // Save to local storage + try cloud (separate from API archive endpoint)
+      const record = {
+        session: completed,
+        archive: {
+          session_id: completed.id,
+          material_id: material.id,
+          material_title: material.title,
+          persona_name: persona.name,
+          completed_at: completed.completed_at || new Date().toISOString(),
+          mastery: completed.result?.mastery ?? 0,
+          headline: completed.result?.headline || "本次学习已完成",
+          misconception_tags: completed.result?.misconception_tags || [],
+          retelling,
+        },
+        answers,
+        retelling,
+        savedAt: new Date().toISOString(),
+      };
+      saveStudyRecord(record);
+      saveRecordToCloud(record).catch(() => {});
       setArchive(await api.archive());
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "诊断失败。");
