@@ -61,22 +61,18 @@ export function AuthModal({
   useEffect(() => {
     if (!open) return;
     previousFocusRef.current = document.activeElement as HTMLElement | null;
-    const appRoot = document.getElementById("root");
-    if (appRoot) appRoot.setAttribute("inert", "");
 
     const focusFirst = () => {
       if (!containerRef.current) return;
       const first = containerRef.current.querySelector<HTMLElement>(FOCUSABLE);
       first?.focus();
     };
-    // Wait a frame for the modal to render.
     const timer = requestAnimationFrame(focusFirst);
 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
       cancelAnimationFrame(timer);
       document.removeEventListener("keydown", handleKeyDown);
-      if (appRoot) appRoot.removeAttribute("inert");
       previousFocusRef.current?.focus();
     };
   }, [open, handleKeyDown]);
