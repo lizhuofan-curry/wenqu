@@ -4,6 +4,84 @@
 
 最后更新：2026-07-27
 
+## 2026-07-27｜前端评审批次 A 代码修复完成 ✅
+
+- 流程对齐完成后，按 A1→A2→A3→A4→A5 顺序完成全部五项 P0 修复：
+
+### A1 生产构建默认演示模式
+- `apps/web/src/lib/api.ts:41-43`：删除 `import.meta.env.PROD && import.meta.env.VITE_DEMO_MODE !== “false”` 分支，演示模式仅 `VITE_DEMO_MODE === “true”` 或 `file:` 时启用；
+- 新增 `isDemo()` 导出，便于 UI 读取演示状态；
+- `apps/web/src/components/Shell.tsx`：新增 `demoMode` prop + 金色「演示模式」标识条；
+- `apps/web/src/styles/shell.css`：新增 `.demo-bar` 样式。
+
+### A2 归档真值性 bug
+- `apps/web/src/lib/cloud.ts:200`：未登录时 `return []` → `return null`；
+- `apps/web/src/lib/api.ts:76`：`||` → `??`，空数组不再遮蔽本地档案。
+
+### A3 掌握环视觉造假
+- `apps/web/src/styles/pages.css:731-735`：删除 `.mastery-ring` 硬编码 `72%` 覆写，使用父规则 `var(--score, 72)`；
+- `apps/web/src/components/InsightsView.tsx:72`：传入 `style={{ “--score”: String(averageMastery) }}`。
+
+### A4 网络降级可恢复
+- `apps/web/src/lib/api.ts:53-57`：删 `useDemo = true` 永久翻转，改为 `degraded = true` 单次标记；
+- 新增 `isDegraded()` 导出；
+- `apps/web/src/components/Shell.tsx`：新增 `degraded` prop + 朱砂色「网络连接失败」提示条；
+- `apps/web/src/styles/shell.css`：新增 `.degraded-bar` 样式。
+
+### A5 跨平台脚本
+- 新增 `scripts/py.mjs`：Node 脚本跨平台探测 venv Python 路径（先 Windows `Scripts/`，后 POSIX `bin/`）；
+- 根 `package.json`：`dev`/`test:api`/`check:api`/`db:migrate`/`db:check` 全部改为 `node scripts/py.mjs` 驱动。
+
+### 验证结果
+- TypeScript `--force`：零错误；
+- Vite 生产构建：通过（CSS 41 kB, JS 250 kB）；
+- Ruff：All checks passed；
+- Pytest：1 passed（健康检查通过），3 个 PermissionError（与本次改动无关的沙箱跨账户临时目录权限问题，详见 lessons-learned 第 22 条）；
+- `py.mjs` 跨平台：Windows 上正确找到并驱动 Python venv。
+
+### 涉及文件
+`lib/api.ts`, `lib/cloud.ts`, `components/Shell.tsx`, `components/InsightsView.tsx`, `styles/pages.css`, `styles/shell.css`, `App.tsx`, `package.json`, `.gitignore`, `scripts/py.mjs`（新）
+
+## 2026-07-27｜前端评审批次 B 代码修复完成 ✅
+
+- 在批次 A 基础上完成全部五项 P1 修复：
+
+### B1 API 客户端加固
+- `apps/web/src/lib/api.ts`：新增 `ApiError` 类携带 HTTP `status`；新增 `BASE_URL`（默认 `"/api"`，可由 `VITE_API_BASE_URL` 覆盖）；新增 `AbortSignal.timeout(15000)` 超时；
+- `apps/web/src/vite-env.d.ts`：补 `VITE_API_BASE_URL`、`VITE_DEMO_MODE` 类型声明（之前由 `vite/client` 索引签名兜底为 `any`）；
+- 所有 `request()` 路径相对化（`/api/personas` → `/personas`），由 `BASE_URL` 拼接。
+
+### B2 AuthModal 键盘可访问性
+- `apps/web/src/components/AuthModal.tsx`：新增 `useEffect` 监听 Escape 关闭；新增焦点陷阱（Tab/Shift+Tab 循环）；新增初始聚焦（`requestAnimationFrame` 聚焦第一个可聚焦元素）；新增 `inert` 属性标记 `#root`；关闭时恢复先前焦点。
+
+### B3 演示内容冒充真实数据
+- `Dashboard.tsx`：Hero 按钮文本动态读取 `materials[0].title/estimated_minutes`；进度环空态显示 0% + "尚无记录"；快速入口文案动态化；封面副标题动态化；
+- `InsightsView.tsx`：删 `items.length * 18` 假学习时长（改为不编造数字）；删重复指标；修复 `key={height + index}` 碰撞 → `key={index}`；
+- `MisconceptionsView.tsx`：概念图/公式/证据链改为仅在有真实错因时展示，空态显示占位提示；
+- `styles/pages.css`：新增 `.empty-graph` 空态样式。
+
+### B4 双写失败无补偿
+- `apps/web/src/lib/api.ts`：`saveRecordToCloud(record)` 改为 `.catch(console.error)` 不阻断 evaluate 返回；本地记录始终已落盘。
+
+### B5 复习入口硬编码
+- `apps/web/src/App.tsx`：洞察/错因页的 onReview 从最近的 archive 条目推导 material_id，回退到 materials[0]。
+
+### 验证结果
+- TypeScript `--force`：零错误；
+- Vite 生产构建：通过（CSS 41 kB, JS 251 kB）；
+- Ruff：All checks passed；
+- Pytest：1 passed, 3 PermissionError（环境问题同上）；
+
+### 涉及文件
+`lib/api.ts`, `components/AuthModal.tsx`, `components/Dashboard.tsx`, `components/InsightsView.tsx`, `components/MisconceptionsView.tsx`, `styles/pages.css`, `App.tsx`, `vite-env.d.ts`
+
+## 2026-07-27｜当前对话已整理导出
+
+- 已将本轮从产品规划、SENet 首版、云端账号到 v.3 前端改版的主要对话整理为 Markdown；
+- 纪要保留产品决策、技术架构、完成内容、关键问题、验证证据和下一步；
+- 已主动排除邮箱、密码、API 密钥和完整数据库连接等敏感信息；
+- 导出文件保存到用户桌面：`问渠项目对话纪要-2026-07-27.md`。
+
 ## 2026-07-27｜v.3「纸上书房」前端改版完成
 
 - 按产品改版方案 A，将通用蓝白后台升级为“东方人文 × 现代编辑器”的纸上书房；
@@ -20,6 +98,8 @@
 - `pnpm check` 全部通过：TypeScript、Vite、Ruff 通过，Pytest `4 passed`；
 - 浏览器自动点击验收通过，页面内容完整、无 Vite 错误层、无运行时错误；
 - 首轮手机截图发现学习页返回文字被挤成竖排，已改为移动端返回箭头并复验通过。
+- v.3 已推送到 GitHub 草稿 PR #18；
+- GitHub CI 的 Web 与 API 两项自动审查均已通过。
 
 对应版本记录：`docs/progress/v.3.md`
 

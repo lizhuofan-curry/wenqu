@@ -197,7 +197,7 @@ export async function syncLocalRecordsToCloud() {
 export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
   if (!supabase) return null;
   const userId = await currentUserId();
-  if (!userId) return [];
+  if (!userId) return null;
   const { data, error } = await supabase
     .from("study_records")
     .select(

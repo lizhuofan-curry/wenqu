@@ -728,12 +728,6 @@
   text-align: center;
 }
 
-.mastery-ring {
-  background:
-    radial-gradient(circle, var(--card) 62%, transparent 64%),
-    conic-gradient(var(--gold) 72%, var(--line) 0);
-}
-
 .mastery-ring strong,
 .score-ring strong {
   font-family: var(--font-mono);
@@ -811,6 +805,15 @@
   background:
     radial-gradient(circle at center, color-mix(in srgb, var(--indigo) 7%, transparent), transparent 13rem),
     repeating-linear-gradient(0deg, transparent, transparent 31px, color-mix(in srgb, var(--line) 38%, transparent) 32px);
+}
+
+.empty-graph {
+  display: flex;
+  min-height: 200px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-faint);
+  font-size: 14px;
 }
 
 .concept-node {

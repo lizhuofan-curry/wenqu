@@ -79,7 +79,9 @@ export function Dashboard({
             onClick={() => materials[0] && onStart(materials[0].id)}
             disabled={busy || materials.length === 0}
           >
-            继续 SENet · 约 18 分钟
+            {materials.length
+              ? `继续 ${materials[0].title} · 约 ${materials[0].estimated_minutes} 分钟`
+              : "开始你的第一份材料"}
             <ArrowRight size={18} />
           </button>
         </div>
@@ -90,16 +92,16 @@ export function Dashboard({
             <article className="book-cover">
               <small>今日材料 · CVPR 2018</small>
               <strong>Squeeze-and-Excitation Networks</strong>
-              <span>通道注意力机制</span>
+              <span>{materials[0]?.subtitle ?? "你的下一份学习材料"}</span>
               <em>问渠陪读本</em>
             </article>
           </div>
           <div
             className="today-progress"
-            style={{ "--progress": `${Math.max(averageMastery, 18) * 3.6}deg` } as CSSProperties}
+            style={{ "--progress": `${Math.max(averageMastery, 0) * 3.6}deg` } as CSSProperties}
           >
-            <strong>{archive.length ? averageMastery : 18}<small>%</small></strong>
-            <span>{archive.length ? "平均掌握" : "今日进度"}</span>
+            <strong>{archive.length ? averageMastery : 0}<small>%</small></strong>
+            <span>{archive.length ? "平均掌握" : "尚无记录"}</span>
           </div>
         </div>
       </section>
@@ -108,8 +110,8 @@ export function Dashboard({
         <button onClick={() => onNavigate("materials")}>
           <span className="quick-index">壹</span>
           <span className="quick-icon blue"><Library size={20} /></span>
-          <span><strong>继续上次阅读</strong><small>{materials.length ? "SENet · 约 18 分钟" : "先添加一份资料"}</small></span>
-          <em>18 分钟</em>
+          <span><strong>继续上次阅读</strong><small>{materials.length ? `${materials[0].title} · 约 ${materials[0].estimated_minutes} 分钟` : "先添加一份资料"}</small></span>
+          <em>{materials[0]?.estimated_minutes ?? "—"} 分钟</em>
           <ChevronRight size={17} />
         </button>
         <button onClick={() => onNavigate("insights")}>

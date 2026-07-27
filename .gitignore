@@ -25,3 +25,5 @@ tmp/
 
 .vercel
 .env*.local
+
+exports/

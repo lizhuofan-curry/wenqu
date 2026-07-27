@@ -34,6 +34,8 @@ type ShellProps = {
   onAuth: (mode: "login" | "register") => void;
   onSignOut: () => void;
   cloudEnabled: boolean;
+  demoMode: boolean;
+  degraded: boolean;
 };
 
 const items: Array<{
@@ -57,6 +59,8 @@ export function Shell({
   onAuth,
   onSignOut,
   cloudEnabled,
+  demoMode,
+  degraded,
 }: ShellProps) {
   const [dark, setDark] = useState(() => localStorage.getItem("wenqu-theme") === "dark");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -178,6 +182,16 @@ export function Shell({
             )}
           </div>
         </header>
+        {demoMode && (
+          <div className="demo-bar" role="status">
+            当前为演示模式，数据来自本地内置示例，非真实后端。
+          </div>
+        )}
+        {degraded && !demoMode && (
+          <div className="degraded-bar" role="alert">
+            网络连接失败，当前显示本地数据。后续操作将重试连接后端。
+          </div>
+        )}
         <main className="main-content">{children}</main>
       </div>
       {mobileOpen && <button className="mobile-overlay" onClick={() => setMobileOpen(false)} />}

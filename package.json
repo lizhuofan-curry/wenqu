@@ -3,13 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "concurrently -k -n API,WEB -c magenta,cyan \"services\\api\\.venv\\Scripts\\python.exe -m uvicorn app.main:app --reload --app-dir services/api --port 8000\" \"pnpm --dir apps/web dev\"",
+    "dev": "concurrently -k -n API,WEB -c magenta,cyan \"node scripts/py.mjs -m uvicorn app.main:app --reload --app-dir services/api --port 8000\" \"pnpm --dir apps/web dev\"",
     "build": "npm --prefix apps/web run build",
     "typecheck": "npm --prefix apps/web run typecheck",
-    "test:api": "services\\api\\.venv\\Scripts\\python.exe -m pytest services/api/tests -q",
-    "check:api": "services\\api\\.venv\\Scripts\\python.exe -m ruff check services/api",
-    "db:migrate": "services\\api\\.venv\\Scripts\\python.exe services/api/scripts/apply_supabase_migrations.py",
-    "db:check": "services\\api\\.venv\\Scripts\\python.exe services/api/scripts/check_supabase.py",
+    "test:api": "node scripts/py.mjs -m pytest services/api/tests -q",
+    "check:api": "node scripts/py.mjs -m ruff check services/api",
+    "db:migrate": "node scripts/py.mjs services/api/scripts/apply_supabase_migrations.py",
+    "db:check": "node scripts/py.mjs services/api/scripts/check_supabase.py",
     "check": "pnpm typecheck && pnpm build && pnpm check:api && pnpm test:api"
   },
   "devDependencies": {

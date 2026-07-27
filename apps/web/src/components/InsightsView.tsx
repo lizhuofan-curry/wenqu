@@ -1,6 +1,5 @@
 import {
   ArrowUpRight,
-  BookCheck,
   BrainCircuit,
   Clock3,
   Flame,
@@ -40,8 +39,7 @@ export function InsightsView({
         <span className="date-chip">近 7 天</span>
       </header>
       <div className="metric-grid">
-        <Metric icon={<Clock3 />} label="估算学习" value={String(items.length * 18)} unit="分钟" change="来自真实档案" />
-        <Metric icon={<BookCheck />} label="完成学习" value={String(items.length)} unit="次" change="浏览器记录" />
+        <Metric icon={<Clock3 />} label="完成学习" value={String(items.length)} unit="次" change={items.length ? "来自真实档案" : "尚无记录"} />
         <Metric icon={<BrainCircuit />} label="平均掌握度" value={String(averageMastery)} unit="%" change="按已完成记录" />
         <Metric icon={<Flame />} label="有效记录" value={String(items.length)} unit="条" change="可导出核对" />
       </div>
@@ -59,7 +57,7 @@ export function InsightsView({
           </div>
           <div className="bar-chart" aria-label="最近七天学习时长柱状图">
             {bars.map((height, index) => (
-              <div className="bar-column" key={height + index}>
+              <div className="bar-column" key={index}>
                 <strong style={{ height: `${height}%` }} />
                 <span>{"一二三四五六日"[index]}</span>
               </div>
@@ -69,7 +67,7 @@ export function InsightsView({
         <section className="panel mastery-panel">
           <p className="eyebrow">能力雷达</p>
           <h3>你最稳定的学习动作</h3>
-          <div className="mastery-ring">
+          <div className="mastery-ring" style={{ "--score": String(averageMastery) } as React.CSSProperties}>
             <strong>{averageMastery}</strong>
             <span>综合掌握</span>
           </div>

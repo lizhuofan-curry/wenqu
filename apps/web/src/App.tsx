@@ -8,7 +8,7 @@ import { MisconceptionsView } from "./components/MisconceptionsView";
 import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
-import { api } from "./lib/api";
+import { api, isDemo, isDegraded } from "./lib/api";
 import { loadProfile } from "./lib/storage";
 import {
   cloudEnabled,
@@ -154,6 +154,8 @@ function App() {
         setAuthOpen(true);
       }}
       cloudEnabled={cloudEnabled}
+      demoMode={isDemo()}
+      degraded={isDegraded()}
       onSignOut={() => {
         void logoutCloudAccount()
           .then(() => {
@@ -196,13 +198,21 @@ function App() {
       {view === "insights" && (
         <InsightsView
           items={archive}
-          onReview={() => materials[0] && void startStudy(materials[0].id)}
+          onReview={() => {
+            const recent = archive[0]?.material_id;
+            const target = materials.find((m) => m.id === recent) || materials[0];
+            if (target) void startStudy(target.id);
+          }}
         />
       )}
       {view === "misconceptions" && (
         <MisconceptionsView
           items={archive}
-          onReview={() => materials[0] && void startStudy(materials[0].id)}
+          onReview={() => {
+            const recent = archive[0]?.material_id;
+            const target = materials.find((m) => m.id === recent) || materials[0];
+            if (target) void startStudy(target.id);
+          }}
         />
       )}
       {view === "study" && material && session && persona && (
