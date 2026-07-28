@@ -867,8 +867,8 @@ async def upload_material(file: UploadFile):
     else:
         # Fallback: raw text split
         text_preview = source_text[:8000] if source_text else ""
+        parts = []
         if text_len > 2000:
-            parts = []
             for sep in ["Introduction", "引言", "\n\n\n", "\n\n"]:
                 chunks = [c.strip() for c in text_preview.split(sep) if len(c.strip()) > 100]
                 if len(chunks) >= 2:
@@ -877,14 +877,19 @@ async def upload_material(file: UploadFile):
             if len(parts) < 2:
                 third = max(len(text_preview) // 3, 500)
                 parts = [text_preview[:third], text_preview[third:third*2], text_preview[third*2:]]
-            for i, part in enumerate(parts[:3]):
-                sections.append(dict(
-                    id=f"s{i+1}", title=["开篇与背景","核心内容","结论与要点"][i],
-                    eyebrow=f"{filename} · 第{i+1}部分",
-                    strict_track=part[:3000],
-                    companion_track="AI 翻译生成中…请稍后刷新重试。",
-                    source=dict(label="上传文件"),
-                ))
+        elif text_preview.strip():
+            # Short but valid materials still need a readable dual-track
+            # section; otherwise the UI reaches an empty study page.
+            parts = [text_preview]
+
+        for i, part in enumerate(parts[:3]):
+            sections.append(dict(
+                id=f"s{i+1}", title=["开篇与背景", "核心内容", "结论与要点"][i],
+                eyebrow=f"{filename} · 第{i+1}部分",
+                strict_track=part[:3000],
+                companion_track="AI 翻译生成中…请稍后刷新重试。",
+                source=dict(label="上传文件"),
+            ))
 
     # --- Map summaries (AI or generic) ------------------------------------
     ai_map = (ai_data.get("map_summaries") or {}) if ai_data else {}
