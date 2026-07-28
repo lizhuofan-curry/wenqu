@@ -58,7 +58,10 @@ jobs:
         run: python -m pip install -r services/api/requirements-dev.txt
 
       - name: Lint
-        run: python -m ruff check services/api
+        run: |
+          python -m ruff check services/api
+          python -m ruff check api/index.py --select E9,F
+          python -m py_compile api/index.py
 
       - name: Test
-        run: python -m pytest services/api/tests -q
+        run: python -m pytest services/api/tests api/tests -q

@@ -872,7 +872,7 @@ async def upload_material(file: UploadFile):
         except Exception:
             source_text = ""
         if not source_text or len(source_text.strip()) < 50:
-            source_text = f"[此 PDF 无法提取文本。请确认文件是文字型而非扫描版 PDF。]"
+            source_text = "[此 PDF 无法提取文本。请确认文件是文字型而非扫描版 PDF。]"
         source_text = source_text[:60000]
 
     # --- AI generation (non-blocking — if it fails, material still works) ---
