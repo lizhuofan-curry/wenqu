@@ -178,8 +178,11 @@ function scoreLocal(
 async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T>) {
   if (useDemo) return fallback();
   try {
-    return await live();
+    const value = await live();
+    degraded = false;
+    return value;
   } catch {
+    degraded = true;
     return fallback();
   }
 }
@@ -210,65 +213,80 @@ export const api = {
     ),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),
-  createSession: (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>) =>
-    withDemo(
-      () =>
-        request<Session>("/sessions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            material_id: materialId,
-            persona_id: personaId,
-            questions: questions || null,
-          }),
-        }),
-      () => {
-        latestDemoSession = createDemoSession(personaId);
-        saveActiveSession(latestDemoSession);
-        return latestDemoSession;
-      },
-    ),
-  evaluate: (
+  createSession: async (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>) => {
+    const fallback = () => {
+      latestDemoSession = createDemoSession(personaId);
+      saveActiveSession(latestDemoSession);
+      return latestDemoSession;
+    };
+    if (useDemo) return fallback();
+    try {
+      const session = await request<Session>("/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ material_id: materialId, persona_id: personaId, questions: questions || null }),
+      });
+      degraded = false;
+      return session;
+    } catch (error) {
+      degraded = true;
+      // A local SENet copy is still evidence-backed.  An uploaded material is
+      // user data, so it must fail visibly rather than borrow SENet's session.
+      if (materialId !== "senet-cvpr-2018") throw error;
+      return fallback();
+    }
+  },
+  evaluate: async (
     sessionId: string,
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
-  ) =>
-    withDemo(
-      () =>
-        request<Session>(`/sessions/${sessionId}/evaluate`, {
+    materialId: string,
+    personaId: string,
+    questions: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>,
+  ) => {
+    const fallback = async () => {
+      const persona =
+        demoPersonas.find((item) => item.id === latestDemoSession?.persona_id) ||
+        demoPersonas[0];
+      const completed = scoreLocal(answers, retelling);
+      const record = {
+        session: completed,
+        archive: {
+          session_id: completed.id,
+          material_id: completed.material_id,
+          material_title: demoMaterial.title,
+          persona_name: persona.name,
+          completed_at: completed.completed_at || new Date().toISOString(),
+          mastery: completed.result?.mastery || 0,
+          headline: completed.result?.headline || "本次学习已完成",
+          misconception_tags: completed.result?.misconception_tags || [],
+          retelling,
+        },
+        answers,
+        retelling,
+        savedAt: new Date().toISOString(),
+      };
+      saveStudyRecord(record);
+      saveRecordToCloud(record).catch((reason: unknown) => {
+        console.error("云端记录保存失败，本地已保存：", reason);
+      });
+      return completed;
+    };
+    if (useDemo) return fallback();
+    try {
+      const completed = await request<Session>(`/sessions/${sessionId}/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ answers, retelling }),
-        }),
-      async () => {
-        const persona =
-          demoPersonas.find((item) => item.id === latestDemoSession?.persona_id) ||
-          demoPersonas[0];
-        const completed = scoreLocal(answers, retelling);
-        const record = {
-          session: completed,
-          archive: {
-            session_id: completed.id,
-            material_id: completed.material_id,
-            material_title: demoMaterial.title,
-            persona_name: persona.name,
-            completed_at: completed.completed_at || new Date().toISOString(),
-            mastery: completed.result?.mastery || 0,
-            headline: completed.result?.headline || "本次学习已完成",
-            misconception_tags: completed.result?.misconception_tags || [],
-            retelling,
-          },
-          answers,
-          retelling,
-          savedAt: new Date().toISOString(),
-        };
-        saveStudyRecord(record);
-        saveRecordToCloud(record).catch((reason: unknown) => {
-          console.error("云端记录保存失败，本地已保存：", reason);
-        });
-        return completed;
-      },
-    ),
+          body: JSON.stringify({ answers, retelling, material_id: materialId, persona_id: personaId, questions }),
+      });
+      degraded = false;
+      return completed;
+    } catch (error) {
+      degraded = true;
+      if (materialId !== "senet-cvpr-2018") throw error;
+      return fallback();
+    }
+  },
   upload: async (file: File) => {
     if (useDemo) {
       throw new Error("演示模式下无法上传新材料，请在后端已启动的环境中打开。");
