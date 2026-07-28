@@ -16,6 +16,7 @@
 - 上传 AI 生成失败时明确标为保底学习流，重新生成失败时返回真实错误，不再将未更新题目伪装成成功；
 - 修复中文回答的原文片段选择：使用中文双字词匹配，避免将整段中文误作单一检索词；
 - 将实际 Vercel 入口纳入质量门禁：`pnpm check` 与 GitHub CI 现在检查 `api/index.py` 的语法/未定义名称、Python 编译和入口专属接口测试；
+- 补齐上传材料删除：首页与资料库均提供带确认和进行中状态的删除入口；内置 SENet 材料受前后端双重保护；
 - README 更新为 v.4，并明确主网站与 GitHub Pages 静态演示的能力边界。
 
 ## 生成或修改的文件
@@ -34,6 +35,7 @@
 - 本地 TypeScript、Vite 生产构建、服务端 Ruff、Python 编译通过；
 - 服务端测试：7 passed（含短 Markdown 上传、会话、评分接口、无向量调用和中文原文片段选择回归）；
 - 更新后的完整本地门禁：TypeScript、Vite、`services/api` Ruff、`api/index.py` 入口静态检查与编译、7 项 Pytest 全部通过；
+- 删除回归加入后：服务端测试 **8 passed**；
 - 冷启动回归：上传材料的 session 缺失时，未配置 DeepSeek 会返回明确 502，不会得到 SENet 评分；
 - Vercel 生产部署：短 Markdown 修复已部署为 `dpl_64L54mZoz7HUUzqAM8h1wEmw3PZF`，状态 `Ready`，`api/index` 函数构建成功（41.47 MB）；
 - Vercel 生产部署：上传与评分及时性修复已部署为 `dpl_8H1aZFr4rrokaHnGPe1Pd6aomPL6`，状态 `Ready`，并绑定主网站别名；

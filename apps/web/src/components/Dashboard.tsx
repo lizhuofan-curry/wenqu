@@ -12,6 +12,7 @@ import {
   Flame,
   Library,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { useRef } from "react";
 import type { CSSProperties } from "react";
@@ -24,7 +25,9 @@ type DashboardProps = {
   onSelectPersona: (id: string) => void;
   onStart: (materialId: string) => void;
   onUpload: (file: File) => void;
+  onDelete: (id: string) => void;
   busy: boolean;
+  deletingId: string | null;
   uploadStatus: string;
   onNavigate: (view: "materials" | "insights" | "misconceptions") => void;
   archive: ArchiveItem[];
@@ -37,7 +40,9 @@ export function Dashboard({
   onSelectPersona,
   onStart,
   onUpload,
+  onDelete,
   busy,
+  deletingId,
   uploadStatus,
   onNavigate,
   archive,
@@ -229,6 +234,20 @@ export function Dashboard({
                   <ArrowRight size={16} />
                 </button>
               </div>
+              {material.source_type !== "builtin" && (
+                <button
+                  className="card-delete"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDelete(material.id);
+                  }}
+                  title="删除这份资料"
+                  aria-label={`删除资料：${material.title}`}
+                  disabled={busy || deletingId === material.id}
+                >
+                  {deletingId === material.id ? <LoaderCircle className="spin" size={15} /> : <Trash2 size={15} />}
+                </button>
+              )}
             </article>
           ))}
         </div>
