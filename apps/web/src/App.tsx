@@ -36,6 +36,7 @@ function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
   const [userName, setUserName] = useState(
@@ -183,6 +184,23 @@ function App() {
     }
   }
 
+  async function deleteMaterial(materialId: string) {
+    const target = materials.find((item) => item.id === materialId);
+    if (!target || target.source_type === "builtin") return;
+    if (!window.confirm(`确定永久删除“${target.title}”吗？此操作无法恢复。`)) return;
+
+    setDeletingId(materialId);
+    setError("");
+    try {
+      await api.deleteMaterial(materialId);
+      setMaterials((current) => current.filter((item) => item.id !== materialId));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "删除失败。请稍后重试。");
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   async function navigate(next: View) {
     if (next === "archive") {
       try {
@@ -232,7 +250,9 @@ function App() {
           onSelectPersona={setSelectedPersona}
           onStart={(id) => void startStudy(id)}
           onUpload={(file) => void upload(file)}
+          onDelete={(id) => void deleteMaterial(id)}
           busy={busy}
+          deletingId={deletingId}
           uploadStatus={uploadStatus}
           onNavigate={(next) => void navigate(next)}
           archive={archive}
@@ -242,15 +262,10 @@ function App() {
         <MaterialsView
           materials={materials}
           busy={busy}
+          deletingId={deletingId}
           onStart={(id) => void startStudy(id)}
           onUpload={(file) => void upload(file)}
-          onDelete={(id) => {
-            void api.deleteMaterial(id).then(() => {
-              setMaterials((prev) => prev.filter((m) => m.id !== id));
-            }).catch((reason: unknown) => {
-              setError(reason instanceof Error ? reason.message : "删除失败。");
-            });
-          }}
+          onDelete={(id) => void deleteMaterial(id)}
           onRegenerate={(id) => {
             void api.regenerateMaterial(id).then((updated) => {
               setMaterials((prev) => prev.map((m) => m.id === id ? updated : m));

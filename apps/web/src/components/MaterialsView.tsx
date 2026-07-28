@@ -15,6 +15,7 @@ import type { MaterialSummary } from "../lib/types";
 type Props = {
   materials: MaterialSummary[];
   busy: boolean;
+  deletingId: string | null;
   onStart: (id: string) => void;
   onUpload: (file: File) => void;
   onDelete: (id: string) => void;
@@ -27,7 +28,7 @@ function source_type_label(m: MaterialSummary) {
   return "MD";
 }
 
-export function MaterialsView({ materials, busy, onStart, onUpload, onDelete, onRegenerate }: Props) {
+export function MaterialsView({ materials, busy, deletingId, onStart, onUpload, onDelete, onRegenerate }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
   const [stepIndex, setStepIndex] = useState(0);
@@ -166,8 +167,14 @@ export function MaterialsView({ materials, busy, onStart, onUpload, onDelete, on
                 <button className="card-regenerate" onClick={(e) => { e.stopPropagation(); onRegenerate(material.id); }} title="重新 AI 翻译" aria-label="重新 AI 翻译" disabled={busy}>
                   <RefreshCw size={14} />
                 </button>
-                <button className="card-delete" onClick={(e) => { e.stopPropagation(); onDelete(material.id); }} title="删除材料" aria-label="删除材料">
-                  <Trash2 size={15} />
+                <button
+                  className="card-delete"
+                  onClick={(event) => { event.stopPropagation(); onDelete(material.id); }}
+                  title="删除这份资料"
+                  aria-label={`删除资料：${material.title}`}
+                  disabled={busy || deletingId === material.id}
+                >
+                  {deletingId === material.id ? <Loader2 className="spin" size={15} /> : <Trash2 size={15} />}
                 </button>
               </>
             )}

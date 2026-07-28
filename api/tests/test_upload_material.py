@@ -138,3 +138,31 @@ def test_local_source_selection_prefers_relevant_excerpt_without_embedding():
     )
 
     assert excerpts == ["链式法则要求保留内层函数，并乘以内层的导数。"]
+
+
+def test_uploaded_material_can_be_deleted_but_builtin_material_is_protected():
+    client = TestClient(index.app)
+    original_materials = dict(index.store._materials)
+    original_chunks = dict(index.store._chunks)
+    try:
+        index.store._materials = {
+            "senet-cvpr-2018": index.SENET_MATERIAL,
+            "upload-test-delete": {
+                "id": "upload-test-delete",
+                "title": "待删除测试材料",
+                "source_type": "markdown",
+            },
+        }
+        index.store._chunks = {"upload-test-delete": [{"text": "temporary"}]}
+
+        deleted = client.delete("/api/materials/upload-test-delete")
+        assert deleted.status_code == 200, deleted.text
+        assert deleted.json() == {"deleted": "upload-test-delete"}
+        assert index.store.get_material("upload-test-delete") is None
+        assert index.store.get_chunks("upload-test-delete") == []
+
+        protected = client.delete("/api/materials/senet-cvpr-2018")
+        assert protected.status_code == 403, protected.text
+    finally:
+        index.store._materials = original_materials
+        index.store._chunks = original_chunks
