@@ -20,6 +20,10 @@ export type MaterialSummary = {
   difficulty: string;
   progress: number;
   created_at: string;
+  generation?: {
+    status: "ready" | "fallback";
+    message: string;
+  };
 };
 
 export type MaterialMapItem = {

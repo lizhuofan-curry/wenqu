@@ -34,6 +34,9 @@ def test_short_markdown_upload_builds_a_readable_learning_flow(monkeypatch):
         assert len(material["sections"]) == 1
         assert material["sections"][0]["strict_track"]
         assert len(material["questions"]) == 3
+        assert material["generation"]["status"] == "fallback"
+        assert index.store.get_chunks(material["id"])
+        assert "embedding" not in index.store.get_chunks(material["id"])[0]
 
         started = client.post(
             "/api/sessions",
@@ -88,4 +91,36 @@ def test_short_markdown_upload_builds_a_readable_learning_flow(monkeypatch):
     finally:
         index.store._materials = original_materials
         index.store._sessions = original_sessions
+        index.store._chunks = original_chunks
+
+
+def test_uploaded_material_keeps_source_chunks_without_embedding_call(monkeypatch):
+    """A first upload must not queue a second remote embedding request."""
+    client = TestClient(index.app)
+    original_materials = dict(index.store._materials)
+    original_chunks = dict(index.store._chunks)
+
+    def must_not_embed(_texts):
+        raise AssertionError("upload must not call the embedding provider")
+
+    try:
+        index.store._materials = {"senet-cvpr-2018": index.SENET_MATERIAL}
+        index.store._chunks = {}
+        monkeypatch.setattr(index, "_embed_texts", must_not_embed)
+        uploaded = client.post(
+            "/api/materials/upload",
+            files={
+                "file": (
+                    "notes.md",
+                    b"# Gradient descent\n\nGradient descent updates parameters in the direction that reduces the loss function.",
+                    "text/markdown",
+                )
+            },
+        )
+
+        assert uploaded.status_code == 201, uploaded.text
+        material_id = uploaded.json()["id"]
+        assert index.store.get_chunks(material_id)
+    finally:
+        index.store._materials = original_materials
         index.store._chunks = original_chunks
