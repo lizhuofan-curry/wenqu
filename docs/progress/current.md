@@ -19,6 +19,7 @@
 - `api/index.py`：对任何成功解析的非空短材料至少生成一段严格轨内容；不再要求正文超过 2000 字才可进入双轨学习。
 - 新增 `api/tests/test_upload_material.py`：固定覆盖短 Markdown 上传、5 节点地图、至少一段内容、创建会话和结构化评分接口。
 - 验证：服务端测试由 4 项扩展到 **5 passed**；TypeScript、Vite 构建、Ruff 与 Python 编译均通过。
+- 生产部署：修复已部署至 Vercel `dpl_64L54mZoz7HUUzqAM8h1wEmw3PZF`，状态 `Ready`，并绑定主网站别名。
 - 生产边界：本次评分使用确定性测试替身验证接口契约，不代表真实 DeepSeek 调用；主站从当前执行环境不可达，真实上传闭环仍待公网访问恢复后完成。
 
 ### 当前最高优先级
