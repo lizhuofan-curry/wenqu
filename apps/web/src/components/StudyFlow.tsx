@@ -116,6 +116,12 @@ export function StudyFlow({
         </div>
       </div>
 
+      {material.generation?.status === "fallback" && (
+        <div className="global-error" role="status">
+          {material.generation.message} 题目当前为通用保底题，不应视为材料专属题。
+        </div>
+      )}
+
       {stage === "map" && (
         <section className="study-stage map-stage">
           <div className="stage-intro">

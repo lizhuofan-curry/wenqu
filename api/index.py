@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import json
 import hashlib
+import logging
 import os
+import re
 import sys
+import time
 import uuid
 import urllib.request as _urllib
 from dataclasses import dataclass
@@ -26,6 +29,8 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
 _supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
@@ -485,6 +490,28 @@ def _retrieve_chunks(
     return [text for text, _ in scored[:top_k]]
 
 
+def _select_source_chunks(query: str, chunks: list[dict], top_k: int = 4) -> list[str]:
+    """Choose useful source excerpts locally, without a second provider request.
+
+    Upload and evaluation must each finish within one DeepSeek request on the
+    serverless path.  The source excerpts still ground the evaluator, while
+    avoiding an optional embedding call that could consume the whole request
+    budget before scoring begins.
+    """
+    texts = [chunk.get("text", "") for chunk in chunks if chunk.get("text")]
+    if not texts:
+        return []
+    terms = set(re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9_-]{2,}", query.lower()))
+    if not terms:
+        return texts[:top_k]
+    ranked = sorted(
+        texts,
+        key=lambda text: sum(term in text.lower() for term in terms),
+        reverse=True,
+    )
+    return ranked[:top_k]
+
+
 async def evaluate_with_deepseek(
     questions: list[dict],
     answers: list[dict],
@@ -502,7 +529,9 @@ async def evaluate_with_deepseek(
     if not api_key:
         raise RuntimeError("DEEPSEEK_API_KEY not configured")
 
-    client = OpenAI(api_key=api_key, base_url=base_url, timeout=5.0, max_retries=0)
+    # Leave room below Vercel's function limit for request parsing and response
+    # serialization.  Do not add an embeddings call ahead of this request.
+    client = OpenAI(api_key=api_key, base_url=base_url, timeout=7.0, max_retries=0)
 
     # Build questions context
     question_context = []
@@ -514,18 +543,14 @@ async def evaluate_with_deepseek(
             max_score=q.get("max_score", 4),
         ))
 
-    # RAG: retrieve relevant source chunks for the user's combined responses
+    # Select source evidence locally.  Calling an embedding endpoint here made
+    # one scoring action wait for two sequential remote requests.
     user_text = " ".join(a.get("response", "") for a in answers) + " " + retelling
     rag_context = ""
     if material_chunks:
-        try:
-            query_embeddings = await _embed_texts([user_text[:2000]])
-            if query_embeddings:
-                relevant = _retrieve_chunks(query_embeddings[0], material_chunks, top_k=4)
-                if relevant:
-                    rag_context = "\n\n相关原文片段：\n" + "\n---\n".join(relevant)
-        except Exception:
-            pass  # RAG failure is non-blocking; fall back to no context
+        relevant = _select_source_chunks(user_text, material_chunks, top_k=4)
+        if relevant:
+            rag_context = "\n\n相关原文片段：\n" + "\n---\n".join(relevant)
 
     prompt = {
         "task": ("作为问渠诊断器，根据评分依据和提供的原文片段评估学习者的回答和复述。用中文。"
@@ -551,7 +576,7 @@ async def evaluate_with_deepseek(
             {"role": "user", "content": json.dumps(prompt, ensure_ascii=False)},
         ],
         response_format={"type": "json_object"},
-        max_tokens=1500,
+        max_tokens=900,
     )
 
     content = response.choices[0].message.content
@@ -766,7 +791,7 @@ async def _ai_generate(filename: str, source_text: str) -> dict:
     client = OpenAI(
         api_key=api_key,
         base_url=os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com"),
-        timeout=5.0, max_retries=0,
+        timeout=7.0, max_retries=0,
     )
     model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
@@ -789,7 +814,10 @@ async def _ai_generate(filename: str, source_text: str) -> dict:
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
-        max_tokens=2000,
+        # This package has a fixed small shape.  Limiting output keeps the
+        # request inside the serverless budget and makes new questions appear
+        # promptly instead of timing out after a large free-form response.
+        max_tokens=1100,
     )
     raw = resp.choices[0].message.content
     if not raw:
@@ -842,12 +870,21 @@ async def upload_material(file: UploadFile):
 
     # --- AI generation (non-blocking — if it fails, material still works) ---
     ai_data = {}
+    generation = {"status": "fallback", "message": "已先生成原文学习流；AI 题目与陪读内容尚未生成。"}
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     if has_ai and source_text and len(source_text) > 100:
+        started_at = time.monotonic()
         try:
             ai_data = await _ai_generate(filename, source_text)
-        except Exception:
-            pass
+            if ai_data:
+                generation = {"status": "ready", "message": "AI 已生成针对性题目与陪读内容。"}
+            else:
+                generation = {"status": "fallback", "message": "AI 未返回可用内容；可在资料库重新生成。"}
+        except Exception as exc:
+            logger.warning("upload_ai_generation_failed filename=%s error=%s", filename, type(exc).__name__)
+            generation = {"status": "fallback", "message": "AI 生成暂时不可用；可在资料库重新生成。"}
+        finally:
+            logger.info("upload_ai_generation_finished filename=%s elapsed_ms=%d status=%s", filename, int((time.monotonic() - started_at) * 1000), generation["status"])
 
     # --- Sections (translated if AI succeeded) ----------------------------
     text_len = len(source_text)
@@ -887,7 +924,7 @@ async def upload_material(file: UploadFile):
                 id=f"s{i+1}", title=["开篇与背景", "核心内容", "结论与要点"][i],
                 eyebrow=f"{filename} · 第{i+1}部分",
                 strict_track=part[:3000],
-                companion_track="AI 翻译生成中…请稍后刷新重试。",
+                companion_track="尚未完成 AI 陪读生成。可先依据严格轨学习，随后在资料库选择“重新生成”获取针对性讲解。",
                 source=dict(label="上传文件"),
             ))
 
@@ -950,6 +987,7 @@ async def upload_material(file: UploadFile):
         learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
         sections=sections,
         questions=questions,
+        generation=generation,
         _hash=content_hash,
     )
     store.seed_senet(material)
@@ -961,15 +999,11 @@ async def upload_material(file: UploadFile):
         except Exception:
             pass
 
-    # RAG chunks
-    try:
-        chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
-        if chunk_texts:
-            embeddings = await _embed_texts(chunk_texts)
-            if embeddings:
-                store.set_chunks(mid, [{"text": ct, "embedding": emb} for ct, emb in zip(chunk_texts, embeddings)])
-    except Exception:
-        pass
+    # Keep source excerpts locally.  Embedding them here used to add a second
+    # sequential DeepSeek request to upload and delay the first visible lesson.
+    chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
+    if chunk_texts:
+        store.set_chunks(mid, [{"text": chunk} for chunk in chunk_texts])
 
     return material
 
@@ -1008,11 +1042,19 @@ async def regenerate_material(material_id: str):
         raise HTTPException(400, "该材料没有足够原文内容，无法重新生成翻译。")
 
     filename = m.get("title", "untitled")
-    ai_data = {}
-    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
-    if has_ai:
-        try: ai_data = await _ai_generate(filename, source_text)
-        except Exception: pass
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        raise HTTPException(503, "DeepSeek API 未配置，暂时无法重新生成。")
+    started_at = time.monotonic()
+    try:
+        ai_data = await _ai_generate(filename, source_text)
+    except Exception as exc:
+        logger.warning("material_regeneration_failed material_id=%s error=%s", material_id, type(exc).__name__)
+        raise HTTPException(502, "AI 重新生成暂时不可用，请稍后重试。") from exc
+    finally:
+        logger.info("material_regeneration_finished material_id=%s elapsed_ms=%d", material_id, int((time.monotonic() - started_at) * 1000))
+
+    if not ai_data:
+        raise HTTPException(502, "AI 没有返回可用内容，请稍后重试。")
 
     if ai_data:
         ai_sections = ai_data.get("sections_translation") or []
@@ -1040,6 +1082,8 @@ async def regenerate_material(material_id: str):
                 answer_guide=q.get("answer_guide", ""),
                 max_score=q.get("max_score", 4),
             ) for i, q in enumerate(ai_questions[:3])]
+
+        m["generation"] = {"status": "ready", "message": "AI 已重新生成针对性题目与陪读内容。"}
 
     # Re-persist
     if _supa_ok():
@@ -1104,18 +1148,22 @@ async def evaluate_session(session_id: str, req: EvaluationRequest):
     mt = (material or {}).get("title", "")
 
     if has_ai and questions:
+        started_at = time.monotonic()
         try:
             result = await evaluate_with_deepseek(
                 questions, req.answers, req.retelling,
                 material_chunks=chunks if not is_senet else None,
                 material_title=mt,
             )
-        except Exception:
+        except Exception as exc:
+            logger.warning("deepseek_evaluation_failed session_id=%s material_id=%s error=%s", session_id, material_id, type(exc).__name__)
             # AI failed — fall back to rules for SENet, error for others
             if is_senet:
                 result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
             else:
                 raise HTTPException(502, "AI 评分暂时不可用，请重试。")
+        finally:
+            logger.info("deepseek_evaluation_finished session_id=%s elapsed_ms=%d", session_id, int((time.monotonic() - started_at) * 1000))
     elif is_senet:
         result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
     else:
