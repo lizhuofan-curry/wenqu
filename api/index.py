@@ -574,6 +574,12 @@ async def evaluate_with_deepseek(
 class EvaluationRequest(BaseModel):
     answers: list[dict] = Field(default_factory=list)
     retelling: str = ""
+    # The browser retains these fields even when a Vercel instance is recycled.
+    # They let us restore the correct session instead of silently scoring an
+    # uploaded material with the built-in SENet rules.
+    material_id: str = "senet-cvpr-2018"
+    persona_id: str = "huangfeng"
+    questions: list[dict] = Field(default_factory=list)
 
 
 class SessionCreate(BaseModel):
@@ -1047,8 +1053,16 @@ class CreateSessionRequest(BaseModel):
 @app.post("/api/sessions", status_code=201)
 def create_session(req: CreateSessionRequest):
     m = store.get_material(req.material_id)
+    if m is None and _supa_ok():
+        _load_supa_materials()
+        m = store.get_material(req.material_id)
     if m is None:
-        raise HTTPException(404, "材料不存在。")
+        # The client supplies the rendered questions so a cold start between
+        # loading an uploaded material and starting it does not discard the
+        # learner's actual material.  We still reject unknown IDs without that
+        # evidence instead of fabricating a SENet session.
+        if not req.questions:
+            raise HTTPException(404, "材料不存在。")
     if not any(p["id"] == req.persona_id for p in PERSONAS):
         raise HTTPException(400, "陪读人格不存在。")
     sid = uuid.uuid4().hex
@@ -1063,12 +1077,22 @@ def create_session(req: CreateSessionRequest):
 async def evaluate_session(session_id: str, req: EvaluationRequest):
     s = store.get_session(session_id)
     if s is None:
-        s = store.create_session(session_id, "senet-cvpr-2018", "huangfeng")
+        # Serverless memory can disappear between starting and submitting a
+        # session.  Restore the client-known material identity; never default
+        # an uploaded material to SENet, which would make its diagnosis false.
+        requested_material_id = req.material_id or "senet-cvpr-2018"
+        s = store.create_session(session_id, requested_material_id, req.persona_id)
+        if req.questions:
+            s["_questions"] = req.questions
     if s["status"] == "completed":
         raise HTTPException(409, "该学习会话已经完成。")
 
-    material = store.get_material(s.get("material_id", "senet-cvpr-2018"))
-    questions = (material or {}).get("questions") or s.get("_questions", [])
+    material_id = s.get("material_id", "senet-cvpr-2018")
+    material = store.get_material(material_id)
+    if material is None and _supa_ok():
+        _load_supa_materials()
+        material = store.get_material(material_id)
+    questions = (material or {}).get("questions") or s.get("_questions", []) or req.questions
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     is_senet = (material or {}).get("id") == "senet-cvpr-2018"
     chunks = store.get_chunks(s.get("material_id", "")) or []
@@ -1105,4 +1129,3 @@ async def evaluate_session(session_id: str, req: EvaluationRequest):
 # If we returned an empty array from this in-memory store, it would shadow the
 # real Supabase archive, so the frontend fallback never triggers.  Returning 404
 # lets the frontend's withDemo catch the error and fall back to Supabase/local.
-

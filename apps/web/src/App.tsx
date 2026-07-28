@@ -135,7 +135,25 @@ function App() {
     setBusy(true);
     setError("");
     try {
-      const completed = await api.evaluate(session.id, answers, retelling);
+      const rawQuestions = material.questions as Array<{
+        id: string;
+        prompt: string;
+        answer_guide?: string;
+        max_score?: number;
+      }>;
+      const completed = await api.evaluate(
+        session.id,
+        answers,
+        retelling,
+        material.id,
+        persona.id,
+        rawQuestions.map((question) => ({
+          id: question.id,
+          prompt: question.prompt,
+          answer_guide: question.answer_guide || "",
+          max_score: question.max_score,
+        })),
+      );
       setSession(completed);
       // Save to local storage + try cloud (separate from API archive endpoint)
       const record = {
