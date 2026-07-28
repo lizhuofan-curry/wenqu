@@ -2,14 +2,14 @@
 
 > 问渠不替你读，而是陪你把知识变成自己的话。
 
-[在线体验问渠](https://lizhuofan-curry.github.io/wenqu/) · [Vercel 备用](https://wenqu-reading-room.vercel.app)
+[主网站 · 在线体验问渠](https://wenqu-reading-room.vercel.app/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/)
 
 [![CI](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-v.3-3975f6)
+![Version](https://img.shields.io/badge/version-v.4-3975f6)
 ![React](https://img.shields.io/badge/React-19-61dafb)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python-0f9d79)
 
-![问渠 v.3 纸上书房](docs/product/prototypes/wenqu-v2/01-home-light.png)
+![问渠纸上书房视觉基线](docs/product/prototypes/wenqu-v2/01-home-light.png)
 
 **问渠**取意于朱熹《观书有感》"问渠那得清如许，为有源头活水来"。它是一间强调原文证据的 AI 陪读阅读室，不止概括材料，而是带学习者完成一条完整闭环：
 
@@ -17,9 +17,9 @@
 材料地图 → 双轨跟读 → 主动回忆 → 用话复述 → 错因诊断 → 阅读档案
 ```
 
-v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸暖白/墨色夜读双主题、期刊纸张严格轨、暖色便签陪读轨、稿纸复述、朱砂批注诊断。
+v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸暖白/墨色夜读双主题、期刊纸张严格轨、暖色便签陪读轨、稿纸复述、朱砂批注诊断。v.4 在此基础上上线 Vercel 同域 FastAPI、DeepSeek 语义评分、上传材料学习包生成与冷启动真实性保护。
 
-首份内置材料为 CVPR 2018 论文 *Squeeze-and-Excitation Networks*，支持完整运行的地图、讲解、三道理解题、复述、规则评分和学习档案。
+首份内置材料为 CVPR 2018 论文 *Squeeze-and-Excitation Networks*，支持完整运行的地图、讲解、三道理解题、复述、AI 优先且可回退的规则评分和学习档案。
 
 ## 为什么不是另一个 PDF 聊天框
 
@@ -34,26 +34,28 @@ v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸�
 
 - 东方人文「纸上书房」双主题视觉与响应式布局；
 - 今日阅读、资料库、学习洞察、错因图谱和阅读档案；
-- 无后端公开演示模式（`VITE_DEMO_MODE=true`）；
-- Supabase 真实邮箱注册、登录、RLA 用户隔离与跨设备学习档案；
+- Vercel 主站同域 React SPA + FastAPI Python Serverless API；
+- GitHub Pages 静态演示模式（`VITE_DEMO_MODE=true`）；
+- Supabase 真实邮箱注册、登录、RLS 用户隔离与跨设备学习档案；
 - 三种陪读人格：黄风教练、安静师姐、严格研究员；
 - SENet 材料地图与三个学习目标；
 - 严格轨 / 陪读轨双栏阅读；
 - 三道开放式理解题与稿纸复述；
 - 朱砂批注诊断：得分、错因标签、正式反馈和原文定位；
 - 本地学习记录与 JSON 导出；
-- PDF / Markdown 上传与 AI 学习包生成；
+- PDF / Markdown 上传、文本提取与 AI 学习包生成；
+- DeepSeek 结构化语义评分、RAG 检索和失败时的证据规则回退；
+- 上传材料会话的冷启动恢复保护：无法确认原材料时明确报错，不会错误套用 SENet 诊断；
 - React 19 + TypeScript + Vite 前端，FastAPI + Pydantic 后端。
 
 ## 在线演示
 
 | 地址 | 说明 |
 |---|---|
-| https://lizhuofan-curry.github.io/wenqu/ | GitHub Pages（推荐） |
-| https://wenqu-reading-room.vercel.app | Vercel 备用 |
+| https://wenqu-reading-room.vercel.app/ | **主网站**：生产 API、上传材料与 AI 评分 |
+| https://lizhuofan-curry.github.io/wenqu/ | GitHub Pages 静态演示：仅内置演示学习流 |
 
-在线版默认使用内置演示数据，无需启动本地后端或配置 AI 密钥。未配置
-Supabase 时，账号与记录保存在当前浏览器；配置后自动升级为真实邮箱账号和跨设备档案。
+主网站使用同域生产 API；DeepSeek 密钥仅保存在 Vercel 服务端环境变量，绝不进入浏览器或仓库。GitHub Pages 是静态演示，不承诺上传与在线评分。未配置 Supabase 时，账号与记录保存在当前浏览器；配置后自动升级为真实邮箱账号和跨设备档案。
 
 ## 项目结构
 
@@ -145,6 +147,7 @@ CI 不调用 OpenAI 或 DeepSeek API，也不需要仓库密钥。
 - [v.0 产品架构](docs/product/architecture.md)
 - [v.0 产品设计](docs/product/design.md)
 - [v.3 纸上书房改版方案](docs/product/REDESIGN-PROPOSAL-v2.md)
+- [v.4 真实评分与上传材料上线](docs/progress/v.4.md)
 - [当前进展与下一步](docs/progress/current.md)
 - [踩坑与复盘](docs/progress/lessons-learned.md)
 - [内容生产自动化工作流](docs/workflow/content-workflow.md)
@@ -157,8 +160,8 @@ CI 不调用 OpenAI 或 DeepSeek API，也不需要仓库密钥。
 - **v.1**：蓝白品牌双主题、资料库/洞察/错因图谱、公开演示模式；
 - **v.2**：Supabase 真实账号、RLS 用户隔离、跨设备学习档案；
 - **v.3**：纸上书房双主题视觉、沉浸学习流、样式模块化拆分；
-- **v.4**：DeepSeek 生产配置、首轮真实学习者测试、跨设备验收；
-- **v.5**：移动端封装、隐私合规、监控、封闭测试与上架候选。
+- **v.4**：Vercel 同域后端、DeepSeek 评分、RAG、上传材料学习包与冷启动真实性保护；
+- **v.5**：首轮 5 人学习测试、调用频率与费用保护、隐私合规、监控与封闭测试。
 
 ## 设计参考
 
@@ -166,4 +169,4 @@ CI 不调用 OpenAI 或 DeepSeek API，也不需要仓库密钥。
 
 ---
 
-问渠仍处于 v.3 验证阶段。现在最重要的是先让 v.3 生产站稳定运行，再完成 DeepSeek 真实调用与首轮 5 人学习测试。
+问渠当前处于 v.4 生产验证阶段。现在最重要的是稳定“上传材料 → 学习 → 评分”闭环，并完成首轮 5 人真实学习者测试。

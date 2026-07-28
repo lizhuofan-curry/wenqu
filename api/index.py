@@ -618,7 +618,7 @@ def health() -> dict:
     )
     return {
         "status": "ok",
-        "version": "v.0",
+        "version": "v.4",
         "ai_configured": ai_configured,
         "ai_provider": settings.ai_provider,
         "model": settings.deepseek_model if settings.ai_provider == "deepseek" else settings.openai_model,
