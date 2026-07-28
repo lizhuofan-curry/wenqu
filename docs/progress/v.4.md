@@ -35,6 +35,7 @@
 - 冷启动回归：上传材料的 session 缺失时，未配置 DeepSeek 会返回明确 502，不会得到 SENet 评分；
 - Vercel 生产部署：短 Markdown 修复已部署为 `dpl_64L54mZoz7HUUzqAM8h1wEmw3PZF`，状态 `Ready`，`api/index` 函数构建成功（41.47 MB）；
 - Vercel 生产部署：上传与评分及时性修复已部署为 `dpl_8H1aZFr4rrokaHnGPe1Pd6aomPL6`，状态 `Ready`，并绑定主网站别名；
+- Vercel 生产部署：中文原文证据选择修复已部署为 `dpl_5M4DMDv44bLZjjPKWNZCuoJZjTFZ`，状态 `Ready`，并绑定主网站别名；
 - 生产端点：本执行环境请求主站 `/api/health` 于 20 秒后超时，因此“公网端点可达”和完整业务闭环仍待独立验收，未将部署 Ready 误记为端到端成功。
 
 ## 接下来自动进行

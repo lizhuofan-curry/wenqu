@@ -13,6 +13,7 @@
 - `api/tests/test_upload_material.py`：新增“上传不得调用向量服务”永久回归；完整质量检查通过，服务端测试 **6 passed**。
 - 已发布到 Vercel：`dpl_8H1aZFr4rrokaHnGPe1Pd6aomPL6` 状态 `Ready`，主域名已绑定，`api/index` 函数构建成功（41.47 MB）。
 - 自测补充：生产上传请求在 TCP 连接阶段 10 秒超时，未抵达应用层；本地完整接口回归继续验证。测试中发现中文回答的原文片段选择把整段中文当成一个词，已改为中文双字词匹配，确保“链式法则”等回答优先关联正确原文；服务端测试现为 **7 passed**。
+- 中文证据选择修复已发布到 Vercel：`dpl_5M4DMDv44bLZjjPKWNZCuoJZjTFZ` 状态 `Ready`，主域名已绑定，`api/index` 函数构建成功（41.47 MB）。
 
 ### 当前最高优先级
 
