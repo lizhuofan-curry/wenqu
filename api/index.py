@@ -501,7 +501,14 @@ def _select_source_chunks(query: str, chunks: list[dict], top_k: int = 4) -> lis
     texts = [chunk.get("text", "") for chunk in chunks if chunk.get("text")]
     if not texts:
         return []
-    terms = set(re.findall(r"[\u4e00-\u9fff]{2,}|[A-Za-z][A-Za-z0-9_-]{2,}", query.lower()))
+    chinese_runs = re.findall(r"[\u4e00-\u9fff]{2,}", query)
+    chinese_bigrams = {
+        run[index:index + 2]
+        for run in chinese_runs
+        for index in range(len(run) - 1)
+    }
+    english_terms = set(re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query.lower()))
+    terms = chinese_bigrams | english_terms
     if not terms:
         return texts[:top_k]
     ranked = sorted(
