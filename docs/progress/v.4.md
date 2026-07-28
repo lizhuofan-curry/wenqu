@@ -14,6 +14,7 @@
 - 修复短 Markdown 上传后双轨内容为空的问题，并加入永久回归测试；
 - 修复上传与评分串行等待两次外部模型调用的问题：原文片段在本地选择，上传与评分各只保留一次 DeepSeek 请求；
 - 上传 AI 生成失败时明确标为保底学习流，重新生成失败时返回真实错误，不再将未更新题目伪装成成功；
+- 修复中文回答的原文片段选择：使用中文双字词匹配，避免将整段中文误作单一检索词；
 - README 更新为 v.4，并明确主网站与 GitHub Pages 静态演示的能力边界。
 
 ## 生成或修改的文件
@@ -30,7 +31,7 @@
 
 - GitHub CI：提交 `0365d28` 的 Web 与 API 检查通过；
 - 本地 TypeScript、Vite 生产构建、服务端 Ruff、Python 编译通过；
-- 服务端测试：6 passed（含短 Markdown 上传、会话、评分接口和“上传不调用向量服务”回归）；
+- 服务端测试：7 passed（含短 Markdown 上传、会话、评分接口、无向量调用和中文原文片段选择回归）；
 - 冷启动回归：上传材料的 session 缺失时，未配置 DeepSeek 会返回明确 502，不会得到 SENet 评分；
 - Vercel 生产部署：短 Markdown 修复已部署为 `dpl_64L54mZoz7HUUzqAM8h1wEmw3PZF`，状态 `Ready`，`api/index` 函数构建成功（41.47 MB）；
 - Vercel 生产部署：上传与评分及时性修复已部署为 `dpl_8H1aZFr4rrokaHnGPe1Pd6aomPL6`，状态 `Ready`，并绑定主网站别名；

@@ -124,3 +124,17 @@ def test_uploaded_material_keeps_source_chunks_without_embedding_call(monkeypatc
     finally:
         index.store._materials = original_materials
         index.store._chunks = original_chunks
+
+
+def test_local_source_selection_prefers_relevant_excerpt_without_embedding():
+    """Scoring evidence selection stays local and favors the answered concept."""
+    excerpts = index._select_source_chunks(
+        "链式法则需要保留内层并乘以内层导数。",
+        [
+            {"text": "极限描述函数在某点附近的变化趋势。"},
+            {"text": "链式法则要求保留内层函数，并乘以内层的导数。"},
+        ],
+        top_k=1,
+    )
+
+    assert excerpts == ["链式法则要求保留内层函数，并乘以内层的导数。"]
