@@ -8,9 +8,10 @@
     "typecheck": "pnpm --dir apps/web run typecheck",
     "test:api": "node scripts/py.mjs -m pytest services/api/tests api/tests -q",
     "check:api": "node scripts/py.mjs -m ruff check services/api",
+    "check:vercel-api": "node scripts/py.mjs -m ruff check api/index.py --select E9,F && node scripts/py.mjs -m py_compile api/index.py",
     "db:migrate": "node scripts/py.mjs services/api/scripts/apply_supabase_migrations.py",
     "db:check": "node scripts/py.mjs services/api/scripts/check_supabase.py",
-    "check": "pnpm typecheck && pnpm build && pnpm check:api && pnpm test:api"
+    "check": "pnpm typecheck && pnpm build && pnpm check:api && pnpm check:vercel-api && pnpm test:api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
