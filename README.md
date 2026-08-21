@@ -37,6 +37,18 @@ v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸�
 | 知道自己错在哪里 | 用错因标签、逐题反馈和原文定位解释误解来源 |
 | 复盘学习过程 | 保存回答、复述、掌握度和下一步建议到阅读档案 |
 
+## 功能截图
+
+| 首页 / 资料库 | 材料地图 / 学习流 |
+|---|---|
+| ![问渠首页浅色主题](docs/product/prototypes/wenqu-v2/01-home-light.png) | ![问渠材料地图深色主题](docs/product/prototypes/wenqu-v2/05-study-map-dark.png) |
+| 纸上书房首页：今日阅读、资料入口与学习状态 | 材料地图：先建立问题、方法、证据、结论和局限 |
+
+| 资料库 | 移动端学习流 |
+|---|---|
+| ![问渠资料库深色主题](docs/product/prototypes/wenqu-v2/03-materials-dark.png) | ![问渠移动端学习流](docs/product/prototypes/wenqu-v2/06-study-mobile-dark.png) |
+| 管理内置材料与上传材料 | 手机端保留双轨阅读和复述流程 |
+
 ## 为什么不是另一个 PDF 聊天框
 
 - **先建立地图**：先辨认问题、方法、证据、结论与局限，再进入细节。
