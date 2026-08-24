@@ -250,6 +250,8 @@ export const api = {
     materialId: string,
     personaId: string,
     questions: Array<{ id: string; prompt: string }>,
+    expectedUserId: string | null,
+    review?: { source_session_id: string; interval_days: 1 | 3 | 7 } | null,
   ) => {
     const fallback = async () => {
       const completed = scoreLocal(answers, retelling);
@@ -260,7 +262,16 @@ export const api = {
       const completed = await request<Session>(`/sessions/${sessionId}/evaluate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ answers, retelling, material_id: materialId, persona_id: personaId, questions }),
+          body: JSON.stringify({
+            answers,
+            retelling,
+            material_id: materialId,
+            persona_id: personaId,
+            questions,
+            expected_user_id: expectedUserId,
+            review_source_session_id: review?.source_session_id,
+            review_interval_days: review?.interval_days,
+          }),
       });
       degraded = false;
       return completed;

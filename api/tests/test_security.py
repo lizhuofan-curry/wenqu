@@ -274,7 +274,7 @@ def test_quota_denial_returns_429_before_ai_call(api_client, monkeypatch):
     denied = api_client.post(
         f"/api/sessions/{started.json()['id']}/evaluate",
         headers=AUTH_A,
-        json=_evaluation_payload(private["id"]),
+        json=_evaluation_payload(private["id"]) | {"expected_user_id": "user-a"},
     )
 
     assert denied.status_code == 429, denied.text
@@ -334,7 +334,7 @@ def test_ai_scores_are_bounded_by_server_owned_question_maxima(api_client, monke
     completed = api_client.post(
         f"/api/sessions/{started.json()['id']}/evaluate",
         headers=AUTH_A,
-        json=_evaluation_payload(private["id"]),
+        json=_evaluation_payload(private["id"]) | {"expected_user_id": "user-a"},
     )
 
     assert completed.status_code == 200, completed.text
@@ -379,3 +379,170 @@ def test_material_persistence_failures_do_not_report_false_success(
     deleted = api_client.delete(f"/api/materials/{private['id']}", headers=AUTH_A)
     assert deleted.status_code == 503, deleted.text
     assert index.store.get_material(private["id"], "user-a") is not None
+
+
+def test_authenticated_evaluation_persists_only_server_scoring(
+    api_client, monkeypatch
+):
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    monkeypatch.setattr(
+        index,
+        "_supa_get",
+        lambda _path: [{"session_id": "source-session", "material_id": "senet-cvpr-2018"}],
+    )
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_A,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    assert started.status_code == 201, started.text
+    payload = _evaluation_payload("senet-cvpr-2018")
+    payload.update(
+        {
+            "expected_user_id": "user-a",
+            "review_source_session_id": "source-session",
+            "review_interval_days": 1,
+            "mastery": 100,
+            "headline": "客户端伪造标题",
+            "session_data": {"result": {"mastery": 100}},
+        }
+    )
+
+    evaluated = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+
+    assert evaluated.status_code == 200, evaluated.text
+    assert evaluated.json()["cloud_saved"] is True
+    assert len(writes) == 1
+    record = writes[0]
+    assert record["user_id"] == "user-a"
+    assert record["mastery"] == evaluated.json()["result"]["mastery"]
+    assert record["headline"] == evaluated.json()["result"]["headline"]
+    assert record["headline"] != "客户端伪造标题"
+    assert record["session_data"]["review"] == {
+        "source_session_id": "source-session",
+        "interval_days": 1,
+    }
+
+
+def test_evaluation_does_not_persist_after_account_switch(api_client, monkeypatch):
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_B,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    payload = _evaluation_payload("senet-cvpr-2018")
+    payload["expected_user_id"] = "user-a"
+
+    evaluated = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_B,
+        json=payload,
+    )
+
+    assert evaluated.status_code == 409
+    assert writes == []
+
+
+def test_authenticated_evaluation_requires_expected_user_id(api_client, monkeypatch):
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_A,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    payload = _evaluation_payload("senet-cvpr-2018")
+
+    evaluated = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+
+    assert evaluated.status_code == 409
+    assert writes == []
+    assert index.store._sessions[started.json()["id"]]["status"] == "active"
+
+
+def test_archive_write_failure_returns_recoverable_completed_result(
+    api_client, monkeypatch
+):
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+
+    def fail_write(_record):
+        raise OSError("simulated archive outage")
+
+    monkeypatch.setattr(index, "_supa_up_study_record", fail_write)
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_A,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    payload = _evaluation_payload("senet-cvpr-2018")
+    payload["expected_user_id"] = "user-a"
+
+    evaluated = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+
+    assert evaluated.status_code == 200, evaluated.text
+    assert evaluated.json()["status"] == "completed"
+    assert evaluated.json()["result"]
+    assert evaluated.json()["cloud_saved"] is False
+
+
+def test_review_source_failure_happens_before_scoring_and_can_retry(
+    api_client, monkeypatch
+):
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    monkeypatch.setattr(index, "_supa_get", lambda _path: (_ for _ in ()).throw(OSError("outage")))
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_A,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    payload = _evaluation_payload("senet-cvpr-2018")
+    payload.update(
+        {
+            "expected_user_id": "user-a",
+            "review_source_session_id": "source-session",
+            "review_interval_days": 1,
+        }
+    )
+
+    failed = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+    assert failed.status_code == 502
+    assert index.store._sessions[started.json()["id"]]["status"] == "active"
+    assert writes == []
+
+    monkeypatch.setattr(
+        index,
+        "_supa_get",
+        lambda _path: [{"session_id": "source-session", "material_id": "senet-cvpr-2018"}],
+    )
+    retried = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+    assert retried.status_code == 200, retried.text
+    assert retried.json()["cloud_saved"] is True
+    assert len(writes) == 1

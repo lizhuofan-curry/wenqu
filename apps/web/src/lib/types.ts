@@ -94,6 +94,7 @@ export type Session = {
   completed_at?: string | null;
   result?: EvaluationResult | null;
   review?: ReviewLink;
+  cloud_saved?: boolean;
 };
 
 export type ReviewLink = {

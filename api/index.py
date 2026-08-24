@@ -77,6 +77,22 @@ def _supa_up(table: str, body: dict):
         pass
 
 
+def _supa_up_study_record(body: dict):
+    data = json.dumps(body).encode("utf-8")
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/study_records?on_conflict=session_id,user_id",
+        data=data,
+        headers={
+            **_service_headers(),
+            "Content-Type": "application/json",
+            "Prefer": "resolution=merge-duplicates",
+        },
+        method="POST",
+    )
+    with _urllib.urlopen(req, timeout=10):
+        pass
+
+
 def _supa_del(table: str, mid: str, user_id: str):
     encoded_mid = _urlparse.quote(mid, safe="")
     encoded_user = _urlparse.quote(user_id, safe="")
@@ -739,6 +755,49 @@ class EvaluationRequest(BaseModel):
     )
     persona_id: str = Field(default="huangfeng", min_length=1, max_length=64)
     questions: list[QuestionReference] = Field(default_factory=list, max_length=3)
+    expected_user_id: str | None = Field(default=None, min_length=1, max_length=64)
+    review_source_session_id: str | None = Field(default=None, min_length=1, max_length=128)
+    review_interval_days: int | None = Field(default=None)
+def _validated_review_link(
+    req: EvaluationRequest, user_id: str | None, material_id: str, session_id: str
+) -> dict | None:
+    has_review_source = req.review_source_session_id is not None
+    has_review_interval = req.review_interval_days is not None
+    if user_id is None:
+        if req.expected_user_id is not None or has_review_source or has_review_interval:
+            raise HTTPException(422, "匿名学习不能提交云端账号或复习来源。")
+        return None
+    if req.expected_user_id != user_id:
+        raise HTTPException(409, "登录账号状态不一致，本次记录不会归入当前账号。")
+    if has_review_source != has_review_interval:
+        raise HTTPException(422, "复习来源与间隔必须同时提供。")
+    if not has_review_source:
+        return None
+    if req.review_interval_days not in (1, 3, 7):
+        raise HTTPException(422, "复习间隔只能是 1、3 或 7 天。")
+    if req.review_source_session_id == session_id:
+        raise HTTPException(422, "复习记录不能引用自身。")
+    review_link = {
+        "source_session_id": req.review_source_session_id,
+        "interval_days": req.review_interval_days,
+    }
+    if not _supa_ok():
+        return review_link
+    encoded_source = _urlparse.quote(req.review_source_session_id or "", safe="")
+    encoded_user = _urlparse.quote(user_id, safe="")
+    try:
+        source_rows = _supa_get(
+            "study_records?select=session_id,material_id"
+            f"&session_id=eq.{encoded_source}&user_id=eq.{encoded_user}&limit=1"
+        )
+    except Exception as exc:
+        logger.warning("review_source_check_failed error=%s", type(exc).__name__)
+        raise HTTPException(502, "云端复习来源校验失败。") from exc
+    if not source_rows or source_rows[0].get("material_id") != material_id:
+        raise HTTPException(422, "复习来源记录不存在、材料不一致或不属于当前账号。")
+    return review_link
+
+
 
 
 # --- FastAPI app -------------------------------------------------------------
@@ -1456,6 +1515,7 @@ async def evaluate_session(
     is_senet = material_id == "senet-cvpr-2018"
     chunks = store.get_chunks(material_id, user_id)
     material_title = material.get("title", "")
+    review_link = _validated_review_link(req, user_id, material_id, session_id)
 
     if is_senet:
         result = evaluate_senet(dict(answers=answers, retelling=req.retelling))
@@ -1489,7 +1549,38 @@ async def evaluate_session(
         req.retelling,
         result,
     )
-    return _public_session(completed)
+    public_completed = _public_session(completed)
+    cloud_saved = False
+    if user_id is not None and _supa_ok():
+        if review_link is not None:
+            public_completed["review"] = review_link
+        persona_name = next(
+            persona["name"] for persona in PERSONAS if persona["id"] == session["persona_id"]
+        )
+        result_payload = public_completed.get("result") or {}
+        record = {
+            "session_id": session_id,
+            "user_id": user_id,
+            "material_id": material_id,
+            "material_title": material_title,
+            "persona_name": persona_name,
+            "completed_at": public_completed.get("completed_at") or datetime.now(UTC).isoformat(),
+            "mastery": int(result_payload.get("mastery", 0)),
+            "headline": str(result_payload.get("headline", "本次学习已完成"))[:500],
+            "misconception_tags": [str(tag)[:100] for tag in result_payload.get("misconception_tags", [])[:50]],
+            "retelling": req.retelling,
+            "answers": answers,
+            "session_data": public_completed,
+            "saved_at": datetime.now(UTC).isoformat(),
+        }
+        try:
+            _supa_up_study_record(record)
+        except Exception as exc:
+            logger.warning("archive_save_failed error=%s", type(exc).__name__)
+        else:
+            cloud_saved = True
+    public_completed["cloud_saved"] = cloud_saved
+    return public_completed
 
 
 # NOTE: /api/archive intentionally not implemented here.
