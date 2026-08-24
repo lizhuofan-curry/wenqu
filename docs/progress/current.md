@@ -2,7 +2,28 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
-最后更新：2026-08-24
+最后更新：2026-08-25
+
+## 2026-08-25｜云同步恢复中心完成本地实现与双路复审
+
+- 首页与阅读档案新增“尚未保存到云端”恢复中心：登录用户可单条或批量重试带服务端签名凭据的失败档案；重试不重新评分、不重复消耗 AI 配额，并按会话主键幂等追加。
+- 评分服务只对完整的服务端规范化记录签发 HMAC 恢复凭据；接口重新校验 Bearer 身份、请求开始时账号、凭据 owner、版本和 90 天有效期。`ARCHIVE_RETRY_SECRET` 少于 32 个 UTF-8 字节时安全禁用，健康接口仅返回配置是否合格的布尔值。
+- 浏览器同步状态明确区分 `pending`、`local-only` 与 `synced`，全部按 owner 命名空间读写；账号切换后的迟到请求不能改写新账号状态。缺少恢复凭据的记录刷新后仍显示“仅本机”，不会误报已同步。
+- 阅读档案把云端记录与当前账号的本机待恢复记录按 `session_id` 合并；只有本机副本时仍能导出 JSON。档案卡片改为真实键盘 disclosure，并加入 `aria-expanded`、`aria-controls` 与恢复列表 live region。
+- 浏览器端不再直接写 Supabase 评分档案；恢复凭据只保存在 `sync.retryToken`，不重复进入会话对象或本机导出数据。
+- 新增迁移 `202608250001_server_owned_study_records.sql`：撤销目标角色全部表权限后，只授予 authenticated `SELECT`、service_role `SELECT, INSERT`；删除登录用户直接增删改策略，既有记录不删除。`pnpm db:check` 已升级为 `pg_class + aclexplode` 完整 ACL 精确集合检查。
+- 两路独立复审分别检查服务端可信边界/迁移顺序和多账号竞态/移动端/无障碍；所有 blocking finding 已修复。尚未实现的“同步成功后主动焦点迁移”记录为非阻塞后续项，当前列表变更已通过 `aria-live` 播报。
+- 完整 `pnpm check` 通过：TypeScript、Vite Production build（1801 modules）、两组 Ruff/Python 编译均成功；后端 **37 passed**，仅 1 条第三方 Starlette/httpx 弃用警告；`git diff --check` 另行作为提交前门禁。
+- 本轮同步更新 `.env.example`、`README.md`、`docs/deployment/supabase.md` 与复盘文件，明确强密钥、浏览器存储边界、迁移权限影响和生产发布顺序。
+- 当前仅完成本地实现与验证，尚未应用生产数据库迁移、配置 Production 恢复密钥、合并 `main` 或发布 Vercel，不能宣称该功能已经上线。
+
+### 当前阶段
+
+**阶段：云同步恢复中心已完成实现、独立复审和整仓本地门禁，正在准备 GitHub PR 与 CI。**
+
+### 当前最高优先级
+
+推送 `codex/cloud-sync-recovery` 并等待 GitHub CI；生产必须严格按“先应用并验证服务端独占写迁移 → 再合并/部署新应用 → 真实评分与重复恢复验收”执行。迁移与 Production 环境变量/发布需要单独明确授权。
 
 ## 2026-08-24｜README 已同步最新生产能力
 

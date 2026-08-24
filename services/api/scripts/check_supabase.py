@@ -219,6 +219,24 @@ def main() -> None:
                 material_privileges = cursor.fetchone()
                 cursor.execute(
                     """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_class c
+                    cross join lateral aclexplode(
+                      coalesce(c.relacl, acldefault('r', c.relowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where c.oid = 'public.study_records'::regclass
+                      and coalesce(grantee_role.rolname, 'PUBLIC') in (
+                        'PUBLIC', 'anon', 'authenticated', 'service_role'
+                      )
+                    """
+                )
+                study_record_privileges = set(cursor.fetchall())
+                cursor.execute(
+                    """
                     select exists (
                       select 1
                       from pg_trigger
@@ -264,24 +282,6 @@ def main() -> None:
         ("profiles", "profiles_update_own"): ("UPDATE", "id", True, True),
         ("study_records", "records_select_own"): (
             "SELECT",
-            "user_id",
-            True,
-            False,
-        ),
-        ("study_records", "records_insert_own"): (
-            "INSERT",
-            "user_id",
-            False,
-            True,
-        ),
-        ("study_records", "records_update_own"): (
-            "UPDATE",
-            "user_id",
-            True,
-            True,
-        ),
-        ("study_records", "records_delete_own"): (
-            "DELETE",
             "user_id",
             True,
             False,
@@ -418,6 +418,16 @@ def main() -> None:
         True,
     ):
         raise RuntimeError(f"materials 表权限异常：{material_privileges}")
+    expected_study_record_privileges = {
+        ("authenticated", "SELECT"),
+        ("service_role", "SELECT"),
+        ("service_role", "INSERT"),
+    }
+    if study_record_privileges != expected_study_record_privileges:
+        raise RuntimeError(
+            "study_records 表权限异常："
+            f"{sorted(study_record_privileges)}"
+        )
     if not trigger_exists:
         raise RuntimeError("新用户建档触发器不存在。")
 
@@ -431,7 +441,7 @@ def main() -> None:
 
     print(
         "Supabase 验证通过：Auth 可用，4 张表启用并强制 RLS，"
-        "10 条账号隔离策略、材料所有者索引、AI 原子配额 RPC 和权限均正常。"
+        "7 条账号隔离策略、服务端独占档案写入、材料所有者索引与 AI 原子配额均正常。"
     )
     print(f"账号统计：共 {total_users} 个，已确认邮箱 {confirmed_users} 个。")
     print(

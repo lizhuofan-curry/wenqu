@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 from copy import deepcopy
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
@@ -127,6 +129,18 @@ def test_health_response_has_security_headers(api_client):
     assert response.headers["permissions-policy"] == (
         "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
     )
+
+
+def test_health_reports_archive_retry_configuration(api_client, monkeypatch):
+    monkeypatch.setattr(index, "_archive_retry_secret", "short")
+    disabled = api_client.get("/api/health")
+    assert disabled.status_code == 200
+    assert disabled.json()["archive_retry_configured"] is False
+
+    monkeypatch.setattr(index, "_archive_retry_secret", "x" * 32)
+    enabled = api_client.get("/api/health")
+    assert enabled.status_code == 200
+    assert enabled.json()["archive_retry_configured"] is True
 
 
 def test_anonymous_only_sees_builtin_and_private_routes_require_auth(api_client):
@@ -546,3 +560,190 @@ def test_review_source_failure_happens_before_scoring_and_can_retry(
     assert retried.status_code == 200, retried.text
     assert retried.json()["cloud_saved"] is True
     assert len(writes) == 1
+
+
+def _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch):
+    monkeypatch.setattr(index, "_archive_retry_secret", "test-retry-secret-at-least-32-bytes")
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    monkeypatch.setattr(
+        index,
+        "_supa_up_study_record",
+        lambda _record: (_ for _ in ()).throw(OSError("simulated archive outage")),
+    )
+    started = api_client.post(
+        "/api/sessions",
+        headers=AUTH_A,
+        json={"material_id": "senet-cvpr-2018", "persona_id": "huangfeng"},
+    )
+    payload = _evaluation_payload("senet-cvpr-2018")
+    payload["expected_user_id"] = "user-a"
+    evaluated = api_client.post(
+        f"/api/sessions/{started.json()['id']}/evaluate",
+        headers=AUTH_A,
+        json=payload,
+    )
+    assert evaluated.status_code == 200, evaluated.text
+    assert evaluated.json()["cloud_saved"] is False
+    assert evaluated.json()["cloud_retry_token"]
+    return evaluated.json()
+
+
+def test_archive_retry_uses_signed_server_record_and_is_repeatable(
+    api_client, monkeypatch
+):
+    completed = _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch)
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    request = {
+        "retry_token": completed["cloud_retry_token"],
+        "expected_user_id": "user-a",
+        "mastery": 100,
+        "headline": "客户端伪造标题",
+    }
+
+    first = api_client.post("/api/archive/retry", headers=AUTH_A, json=request)
+    second = api_client.post("/api/archive/retry", headers=AUTH_A, json=request)
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 200, second.text
+    assert len(writes) == 2
+    assert writes[0] == writes[1]
+    assert writes[0]["mastery"] == completed["result"]["mastery"]
+    assert writes[0]["headline"] == completed["result"]["headline"]
+    assert writes[0]["headline"] != "客户端伪造标题"
+
+
+def test_archive_retry_rejects_tampering_and_other_accounts(api_client, monkeypatch):
+    completed = _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch)
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    token = completed["cloud_retry_token"]
+
+    tampered = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_A,
+        json={"retry_token": token[:-1] + ("A" if token[-1] != "A" else "B"), "expected_user_id": "user-a"},
+    )
+    switched = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_B,
+        json={"retry_token": token, "expected_user_id": "user-b"},
+    )
+
+    assert tampered.status_code == 422
+    assert switched.status_code == 403
+    assert writes == []
+
+
+def test_archive_retry_failure_keeps_same_receipt_reusable(api_client, monkeypatch):
+    completed = _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch)
+    token = completed["cloud_retry_token"]
+    request = {"retry_token": token, "expected_user_id": "user-a"}
+    monkeypatch.setattr(
+        index,
+        "_supa_up_study_record",
+        lambda _record: (_ for _ in ()).throw(OSError("still unavailable")),
+    )
+
+    failed = api_client.post("/api/archive/retry", headers=AUTH_A, json=request)
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    recovered = api_client.post("/api/archive/retry", headers=AUTH_A, json=request)
+
+    assert failed.status_code == 503
+    assert recovered.status_code == 200
+    assert len(writes) == 1
+
+def _resign_retry_token(token: str, issued_at: datetime) -> str:
+    encoded, _signature = token.split(".", 1)
+    payload = json.loads(index._base64url_decode(encoded).decode("utf-8"))
+    payload["issued_at"] = issued_at.isoformat()
+    rewritten = index._base64url_encode(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    )
+    key = index._archive_retry_key()
+    assert key is not None
+    signature = index._base64url_encode(
+        index.hmac.new(key, rewritten.encode("ascii"), index.hashlib.sha256).digest()
+    )
+    return f"{rewritten}.{signature}"
+
+
+@pytest.mark.parametrize("secret", ["", "too-short"])
+def test_archive_retry_rejects_missing_or_short_secret(api_client, monkeypatch, secret):
+    monkeypatch.setattr(index, "_archive_retry_secret", secret)
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    response = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_A,
+        json={"retry_token": "x" * 20, "expected_user_id": "user-a"},
+    )
+    assert response.status_code == 503
+    assert "32" in response.json()["detail"]
+
+
+def test_archive_retry_rejects_future_receipt(api_client, monkeypatch):
+    completed = _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch)
+    future = _resign_retry_token(
+        completed["cloud_retry_token"],
+        datetime.now(UTC) + timedelta(minutes=6),
+    )
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    response = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_A,
+        json={"retry_token": future, "expected_user_id": "user-a"},
+    )
+    assert response.status_code == 422
+    assert writes == []
+
+
+def test_archive_retry_requires_auth_and_matching_expected_user(api_client, monkeypatch):
+    completed = _evaluation_with_failed_archive_and_receipt(api_client, monkeypatch)
+    token = completed["cloud_retry_token"]
+    writes = []
+    monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
+    no_auth = api_client.post(
+        "/api/archive/retry",
+        json={"retry_token": token, "expected_user_id": "user-a"},
+    )
+    expected_mismatch = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_A,
+        json={"retry_token": token, "expected_user_id": "user-b"},
+    )
+    switched = api_client.post(
+        "/api/archive/retry",
+        headers=AUTH_B,
+        json={"retry_token": token, "expected_user_id": "user-a"},
+    )
+    assert no_auth.status_code == 401
+    assert expected_mismatch.status_code == 409
+    assert switched.status_code == 409
+    assert writes == []
+
+
+def test_study_record_upsert_uses_ignore_duplicates(monkeypatch):
+    captured = []
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, _exc_type, _exc, _traceback):
+            return False
+
+    def fake_urlopen(request, timeout):
+        captured.append((request, timeout))
+        return FakeResponse()
+
+    monkeypatch.setattr(index, "_supa_url", "https://example.supabase.co")
+    monkeypatch.setattr(index, "_supa_service_key", "service-key")
+    monkeypatch.setattr(index._urllib, "urlopen", fake_urlopen)
+    index._supa_up_study_record({"session_id": "session-a", "user_id": "user-a"})
+    assert len(captured) == 1
+    request, timeout = captured[0]
+    assert request.get_method() == "POST"
+    assert request.get_header("Prefer") == "resolution=ignore-duplicates"
+    assert timeout == 10

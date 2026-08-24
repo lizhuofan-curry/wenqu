@@ -32,6 +32,20 @@ pnpm db:migrate
 `VITE_SUPABASE_ANON_KEY` 是配合 RLS 使用的浏览器公开密钥，不是管理员密钥。
 `service_role` 密钥不得以 `VITE_` 开头，也不得进入 Git。
 
+## 云同步失败恢复
+
+恢复中心依赖 `supabase/migrations/202608250001_server_owned_study_records.sql`，迁移后：
+
+- `authenticated` 只能读取自己的 `study_records`，不能直接插入、修改或删除评分档案；
+- `service_role` 只能读取和追加档案，不能覆盖或删除既有评分结果；
+- 既有记录不会被删除，正常评分和恢复重试都由服务端追加写入；
+- 重复恢复同一 `session_id` 时使用幂等冲突忽略，不会生成重复档案。
+
+Vercel 的 Production、Preview 和 Development 还必须配置至少 32 个 UTF-8 字节的独立高熵值 `ARCHIVE_RETRY_SECRET`。
+它用于 HMAC 签发完整服务端评分记录，不能复用 Supabase service role key。浏览器重试时只提交签名凭据与预期账号；后端重新验证 Bearer 身份、凭据签名、账号归属和有效期，不重新评分或扣减 AI 配额。
+
+迁移与环境变量属于生产安全闸门：先在 Preview 配置并验收，再单独批准生产数据库迁移和 Production 发布。执行后运行 `pnpm db:check`，确认策略与表权限和仓库预期一致。
+
 ## 验收
 
 1. 手机注册并确认邮箱。
@@ -40,7 +54,11 @@ pnpm db:migrate
 4. 阅读档案应出现刚才的练习。
 5. 用另一个账号登录，不应看到第一个账号的数据。
 6. 退出登录后，云端档案不应继续显示。
+7. 模拟一次数据库写入失败，页面应保留本机副本并显示恢复入口。
+8. 恢复成功后入口消失、云端只出现一条相同会话记录；重复提交仍只保留一条。
+9. 篡改恢复凭据或由账号 B 提交账号 A 的凭据时，API 必须拒绝且不写库。
 
 ## 回退策略
 
 没有配置 Supabase 环境变量时，问渠会自动回到浏览器本地模式，现有演示功能不会中断。
+没有配置 `ARCHIVE_RETRY_SECRET` 时，评分仍会返回并保存在当前浏览器，但失败记录不能自动重试；界面必须明确显示为仅本机保存，不能误报已同步。

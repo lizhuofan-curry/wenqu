@@ -164,3 +164,131 @@
     grid-template-columns: 1fr;
   }
 }
+
+.sync-recovery {
+  margin-bottom: 28px;
+  padding: clamp(20px, 3vw, 28px);
+  border: 1px solid color-mix(in srgb, var(--cinnabar) 34%, var(--line));
+  border-left: 4px solid var(--cinnabar);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--cinnabar-soft) 52%, transparent), transparent 58%),
+    var(--card);
+  box-shadow: var(--shadow-card);
+}
+
+.sync-recovery-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.sync-recovery-heading .eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sync-recovery-heading h3 {
+  margin: 5px 0 7px;
+  font-family: var(--font-serif);
+  font-size: clamp(20px, 2.4vw, 26px);
+}
+
+.sync-recovery-heading h3:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--indigo) 65%, transparent);
+  outline-offset: 3px;
+}
+
+.sync-recovery-heading p,
+.sync-recovery-item small {
+  color: var(--ink-soft);
+}
+
+.sync-recovery-heading p {
+  max-width: 680px;
+  margin: 0;
+  line-height: 1.65;
+}
+
+.sync-all-button,
+.sync-recovery-item > button {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 10px 15px;
+  border: 1px solid var(--cinnabar);
+  color: var(--cinnabar);
+  background: var(--paper);
+  white-space: nowrap;
+}
+
+.sync-recovery button:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.sync-recovery-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.sync-recovery-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 78%, transparent);
+}
+
+.sync-recovery-item > div {
+  min-width: 0;
+}
+
+.sync-recovery-item strong,
+.sync-recovery-item small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.sync-recovery-item small {
+  margin-top: 4px;
+  font-size: 11px;
+}
+
+.sync-recovery-item p {
+  margin: 7px 0 0;
+  color: var(--cinnabar);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.sync-local-only-note {
+  max-width: 210px;
+  color: var(--ink-soft);
+  font-size: 11px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 720px) {
+  .sync-recovery-heading,
+  .sync-recovery-item {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .sync-all-button,
+  .sync-recovery-item > button {
+    width: 100%;
+  }
+
+  .sync-local-only-note {
+    max-width: none;
+  }
+}
