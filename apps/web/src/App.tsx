@@ -86,9 +86,10 @@ function App() {
     const applyProfile = (profile: Awaited<ReturnType<typeof getCloudProfile>>) => {
       if (disposed) return;
       const nextUserId = profile?.userId || null;
-      const epoch = ++authEpoch.current;
-      if (activeCloudUserId.current !== nextUserId) {
+      const identityChanged = activeCloudUserId.current !== nextUserId;
+      if (identityChanged) {
         activeCloudUserId.current = nextUserId;
+        ++authEpoch.current;
         setMaterial(null);
         setSession(null);
         setMaterials([]);
@@ -100,6 +101,7 @@ function App() {
         setError("");
         setView((current) => current === "study" ? "home" : current);
       }
+      const epoch = authEpoch.current;
       if (profile) {
         saveProfile(profile);
       } else {
