@@ -13,7 +13,8 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { Material, Persona, Session } from "../lib/types";
+import type { Material, Persona, ReviewTask, Session } from "../lib/types";
+import { ReviewComparison } from "./ReviewComparison";
 
 type Stage = "map" | "read" | "quiz" | "retell" | "result";
 
@@ -22,6 +23,7 @@ type StudyFlowProps = {
   session: Session;
   persona: Persona;
   busy: boolean;
+  reviewTask?: ReviewTask;
   onEvaluate: (
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
@@ -29,7 +31,8 @@ type StudyFlowProps = {
   onExit: () => void;
 };
 
-const stageOrder: Stage[] = ["map", "read", "quiz", "retell", "result"];
+const fullStageOrder: Stage[] = ["map", "read", "quiz", "retell", "result"];
+const reviewStageOrder: Stage[] = ["quiz", "retell", "result"];
 const stageLabels = {
   map: "材料地图",
   read: "双轨跟读",
@@ -45,14 +48,16 @@ export function StudyFlow({
   busy,
   onEvaluate,
   onExit,
+  reviewTask,
 }: StudyFlowProps) {
-  const [stage, setStage] = useState<Stage>(session.result ? "result" : "map");
+  const [stage, setStage] = useState<Stage>(session.result ? "result" : reviewTask ? "quiz" : "map");
   const [sectionIndex, setSectionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [retelling, setRetelling] = useState("");
   const activeSection = material.sections[sectionIndex];
   const result = session.result;
-  const currentIndex = stageOrder.indexOf(stage);
+  const activeStageOrder = reviewTask ? reviewStageOrder : fullStageOrder;
+  const currentIndex = activeStageOrder.indexOf(stage);
   const quizComplete = material.questions.every((question) =>
     Boolean(answers[question.id]?.trim()),
   );
@@ -60,8 +65,8 @@ export function StudyFlow({
 
   const progress = useMemo(() => {
     if (stage === "result") return 100;
-    return Math.round(((currentIndex + 1) / stageOrder.length) * 100);
-  }, [currentIndex, stage]);
+    return Math.round(((currentIndex + 1) / activeStageOrder.length) * 100);
+  }, [activeStageOrder.length, currentIndex, stage]);
 
   useEffect(() => {
     if (session.result) {
@@ -82,7 +87,7 @@ export function StudyFlow({
   }
 
   function goNext() {
-    const next = stageOrder[Math.min(currentIndex + 1, stageOrder.length - 1)];
+    const next = activeStageOrder[Math.min(currentIndex + 1, activeStageOrder.length - 1)];
     setStage(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -109,7 +114,7 @@ export function StudyFlow({
 
       <div className="progress-shell">
         <div className="progress-steps">
-          {stageOrder.map((item, index) => (
+          {activeStageOrder.map((item, index) => (
             <button
               key={item}
               className={index <= currentIndex ? "done" : ""}
@@ -248,6 +253,13 @@ export function StudyFlow({
             <h2>先回答，再看自己是不是真懂</h2>
             <p>答案提交前不会显示标准答案。卡住恰恰说明这里值得回看。</p>
           </div>
+          {reviewTask && (
+            <div className="review-mode-note">
+              <strong>第 {reviewTask.interval_days} 天复习 · 先回忆，不回看原文</strong>
+              <p>上次掌握度 {reviewTask.source_mastery}%。重点检查：{reviewTask.source_misconception_tags.join("、") || "核心概念能否完整复述"}</p>
+            </div>
+          )}
+
           <div className="question-list">
             {material.questions.map((question, index) => (
               <article className="question-card" key={question.id}>
@@ -357,6 +369,8 @@ export function StudyFlow({
               </span>
             </div>
           </div>
+
+          {reviewTask && <ReviewComparison task={reviewTask} result={result} />}
 
           <div className="diagnosis-grid">
             {result.question_results.map((item, index) => (

@@ -52,6 +52,8 @@ type CloudStudyRow = {
   headline: string;
   misconception_tags: string[];
   retelling: string;
+  answers: Array<{ question_id: string; response: string }>;
+  session_data: { review?: { source_session_id: string; interval_days: 1 | 3 | 7 } };
 };
 
 function friendlyAuthError(message: string) {
@@ -217,12 +219,21 @@ export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
   const { data, error } = await client
     .from("study_records")
     .select(
-      "session_id, material_id, material_title, persona_name, completed_at, mastery, headline, misconception_tags, retelling",
+      "session_id, material_id, material_title, persona_name, completed_at, mastery, headline, misconception_tags, retelling, answers, session_data",
     )
     .order("completed_at", { ascending: false });
   if (error) throw new Error(`云端档案加载失败：${error.message}`);
   return ((data || []) as CloudStudyRow[]).map((row) => ({
-    ...row,
+    session_id: row.session_id,
+    material_id: row.material_id,
+    material_title: row.material_title,
+    persona_name: row.persona_name,
+    completed_at: row.completed_at,
+    mastery: row.mastery,
+    headline: row.headline,
+    retelling: row.retelling,
+    answers: row.answers || [],
+    review: row.session_data?.review,
     misconception_tags: row.misconception_tags || [],
   }));
 }

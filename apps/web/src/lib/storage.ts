@@ -106,7 +106,11 @@ export function loadStudyRecords(): LocalStudyRecord[] {
 
 export function loadLocalArchive(): ArchiveItem[] {
   return loadStudyRecords()
-    .map((record) => record.archive)
+    .map((record) => ({
+      ...record.archive,
+      answers: record.answers,
+      review: record.session.review,
+    }))
     .sort((a, b) => b.completed_at.localeCompare(a.completed_at));
 }
 

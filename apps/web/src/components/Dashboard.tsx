@@ -16,7 +16,8 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import type { CSSProperties } from "react";
-import type { ArchiveItem, MaterialSummary, Persona } from "../lib/types";
+import type { ArchiveItem, MaterialSummary, Persona, ReviewTask } from "../lib/types";
+import { ReviewQueue } from "./ReviewQueue";
 
 type DashboardProps = {
   materials: MaterialSummary[];
@@ -31,6 +32,8 @@ type DashboardProps = {
   uploadStatus: string;
   onNavigate: (view: "materials" | "insights" | "misconceptions") => void;
   archive: ArchiveItem[];
+  reviewTasks: ReviewTask[];
+  onStartReview: (task: ReviewTask) => void;
 };
 
 export function Dashboard({
@@ -46,6 +49,8 @@ export function Dashboard({
   uploadStatus,
   onNavigate,
   archive,
+  reviewTasks,
+  onStartReview,
 }: DashboardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const averageMastery = archive.length
@@ -111,6 +116,12 @@ export function Dashboard({
         </div>
       </section>
 
+
+      <ReviewQueue
+        tasks={reviewTasks}
+        busy={busy}
+        onStart={onStartReview}
+      />
       <section className="quick-grid">
         <button onClick={() => onNavigate("materials")}>
           <span className="quick-index">壹</span>
