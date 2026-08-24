@@ -4,6 +4,28 @@
 
 最后更新：2026-08-24
 
+## 2026-08-24｜间隔复习已完成生产发布与真实云端闭环验收
+
+- D1/D3/D7 功能在生产验收中先后暴露并修复两条真实故障：评分结果缺少可选 `source` 时结果页白屏；已登录用户的浏览器直连 Supabase POST 未能写入云端。
+- 结果证据契约已双重加固：后端总是用题目原文证据补齐 `question_results.source`，前端同时对缺失来源显示诚实降级提示，不再因空值崩溃。对应 PR #28 合并提交 `5f1fec9`。
+- 云端档案改为由 `evaluate_session` 在服务端评分完成后直接构造并写入；浏览器只提交回答、复述、明确账号与复习来源，不再把客户端 mastery、headline 或 session_data 当作入库真值。
+- 登录 token 用户必须与请求开始时捕获的 `expected_user_id` 完全一致；匿名记录不会被登录账号自动认领。复习来源在评分、AI 配额和完成会话之前验证同账号、同材料、非自身及 1/3/7 天间隔。
+- 数据库写入失败会返回真实 completed 结果与 `cloud_saved=false`，前端保存当前账号命名空间的本地恢复副本，不再让评分结果随云故障丢失。最终实现经独立安全复审无 blocking finding。
+- 完整门禁通过：TypeScript、Vite Production build、两组 Ruff/Python 编译均通过；后端 **28 passed**，仅 1 条第三方 Starlette/httpx 弃用警告；PR #30 的 Web/API 两项 GitHub CI 均通过，合并提交 `c785e6d`。
+- 最终 Production deployment 为 `dpl_GNx7K4Pyk9cmDXE448p5RknxZp3z`，状态 `Ready`，主域名 <https://wenqu-reading-room.vercel.app> 已绑定该构件；部署代码为 `c785e6dd22c5e748c90a3642c9afee17896f2ce9`。
+- 最终部署最近 1 小时 `error` 日志为 0；生产别名 `/api/health` HTTP 200、`Cache-Control: no-store`，首页 CSP/HSTS/Permissions/Referrer/nosniff/DENY 均生效。构件专属 URL 受 Vercel SSO 保护，匿名 302 不作为健康失败；JSON API 未观察到 CSP，不能宣称 CSP 覆盖所有路径。
+- 最终一次性账号实测通过：登录后显示 D1/D3/D7 三项到期任务；D1 直接进入主动回忆；结果页显示 100 分、三条原文证据和 72%→100% 对比；界面明确显示“本次记录已同步到云端”；数据库核验 `REVIEW_LINK_FOUND=true`；测试账号及记录已级联删除，浏览器错误为 0。
+- 生产匿名 API 回归继续通过：health 200、材料列表仅内置 SENet、规则评分 100，三题 `source.label/detail` 均非空；此前真实临时账号 A/B 材料隔离验收也通过且已清理。
+
+### 当前阶段
+
+**阶段：D1/D3/D7 间隔复习、结果证据防崩溃与服务端可信云端归档均已合入 `main`、发布 Production，并完成真实一次性账号闭环验收。**
+
+### 当前最高优先级
+
+进入持续监控和首位真实学习者验证；重点观察评分完成率、`cloud_saved=false` 的实际出现频率与跨设备档案刷新，并评估是否增加“稍后重试云同步”入口。
+
+
 ## 2026-08-24｜D1/D3/D7 间隔复习队列已合并
 
 - 首页新增“今日复习”，从真实学习档案自动推导第 1、3、7 天任务；到期优先显示，未到期任务保持不可点击，不伪造学习进度。
