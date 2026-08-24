@@ -446,3 +446,10 @@
 - 根因：把 token 生命周期事件误当成账号身份变化，并让 `AuthModal` 与 App 认证监听器同时写入 profile，账号命名空间缺少单一落盘源。
 - 解决：仅在 stable `userId` 真正发生 `null → A`、`A → B` 或 `B → null` 变化时递增 epoch 并统一清理账号相关瞬态状态；同账号 `TOKEN_REFRESHED` 保持 epoch 不变；云端 profile 只由 App auth watcher 落盘，`AuthModal` 只报告认证成功。
 - 预防：前端认证回归固定覆盖四个时序：首次 `null → A`；A 操作悬挂时 `TOKEN_REFRESHED(A)` 后正常完成；A 操作悬挂时切换 B 且 A 晚返回被忽略；B 退出后清空私有状态并恢复公共材料。
+
+### 58. Marketplace Supabase 资源暂停会表现为 pooler tenant/user not found
+
+- 现象：生产发布预检时，`pnpm db:check` 尚未建立数据库连接便返回 `tenant/user not found`；继续核对 Vercel Marketplace 后发现原 Supabase 资源处于 `Suspended` / `Free Plan` 状态。
+- 根因：Marketplace 资源暂停后，连接池无法再解析原租户或数据库用户；此时的连接错误不等于迁移脚本有误，也不能证明原数据库或数据已经不存在。
+- 解决：先用 integration list 与 resource inspect 确认原资源状态并停止迁移、部署和业务写入；保留 PR #24 为草稿，不新建替代数据库，等待用户从资源 Dashboard 恢复原资源并确认数据与备份可用。
+- 预防：生产迁移前先检查 Marketplace 集成与资源状态；资源恢复后先只读核对迁移账本和备份，再建立数据库基线并执行迁移。未确认原资源与备份前，绝不能新建数据库或部署依赖新 schema 的代码。

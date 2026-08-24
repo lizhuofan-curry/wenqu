@@ -4,7 +4,7 @@
 
 最后更新：2026-08-24
 
-## 2026-08-24｜安全加固已发布无冲突草稿 PR（待迁移、待部署）
+## 2026-08-24｜安全加固生产发布预检受阻（Supabase 资源待恢复）
 
 - 生产 API 已加入 Supabase Bearer 登录校验；匿名用户只能读取并用规则评分内置 SENet，上传材料的读取、上传、删除、重新生成、建会话和 AI 评分均按用户所有权隔离，非所有者统一返回 404。
 - 生产材料响应递归移除 `answer_guide`、`max_score`、`_hash` 和 `_owner_id`；评分请求固定为 q1/q2/q3 三道唯一题，回答、复述和材料 ID 均有长度/格式约束，模型分数由服务端题目上限重新裁剪，掌握度限制在 0—100。
@@ -15,15 +15,16 @@
 - CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
 - 新增生产 API 安全回归矩阵；本地与生产 API 测试合计 **22 passed**。前端强制 TypeScript 检查与生产构建通过（JS 262.42 kB，gzip 84.02 kB），JavaScript 高危审计为 0，生产 API Python 编译与 Ruff E9/F 通过。
 - 修复已发布到 `codex/security-hardening-main`：该分支从最新 `origin/main`（`8ed99be`）重建，移植完成时相对主线 behind 0 / ahead 1；核心安全提交 `65b6e89`，认证竞态修复提交 `282f2b3`；草稿 PR #24 为 `MERGEABLE` / `CLEAN`，Web 与 API 两项 CI 均成功。旧 PR #23 已关闭，旧分支 `codex/security-hardening` 保留作历史记录。
-- 本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料；生产安全状态尚未改变。
+- 生产发布预检确认：Vercel Marketplace 资源 `supabase-aureolin-button` 当前为 `Suspended` / `Free Plan`；`pnpm db:check` 在建立数据库连接前即以 `tenant/user not found` 失败，因此没有形成迁移前数据库状态证据。
+- 为保护原资源及可能存在的数据/备份，本轮未新建替代数据库、未执行真实 Supabase 迁移、未部署安全版本，也未读取或写入真实用户数据；PR #24 继续保持 `draft` / `CLEAN`，生产安全状态尚未改变。
 
 ### 当前阶段
 
-**阶段：安全修复已在 `codex/security-hardening-main` 发布为无冲突草稿 PR #24，等待受控数据库迁移、部署与生产隔离验收。**
+**阶段：安全修复已在 `codex/security-hardening-main` 发布为无冲突草稿 PR #24；生产发布预检因原 Supabase Marketplace 资源暂停而阻塞，等待资源恢复后再迁移、部署与验收。**
 
 ### 当前最高优先级
 
-先在 Supabase 受控环境应用 `202608240001_security_hardening.sql` 并运行更新后的只读 `db:check`；验证 RLS 与配额 RPC 后，再部署同一版本的 API/前端并完成“账号 A 上传 → 账号 B 不可见 → 账号 A 学习与评分”的生产闭环。
+由用户在资源 Dashboard 恢复原 Supabase 资源，并确认原数据与备份可用；恢复后先只读核对迁移账本和备份，再运行 `pnpm db:check` 建立迁移前基线，随后才应用 `202608240001_security_hardening.sql`、部署同一版本并完成生产隔离验收。
 
 ## 2026-08-21｜README 功能截图区补齐 ✅
 
@@ -357,7 +358,7 @@
 
 ## 当前阶段
 
-**阶段：v.4 线上版本仍在运行；安全修复已发布为无冲突草稿 PR #24，待数据库迁移、部署与生产隔离验收。**
+**阶段：v.4 线上版本仍在运行；PR #24 保持 `draft` / `CLEAN`；因原 Supabase Marketplace 资源暂停，待资源恢复后再迁移、部署与生产隔离验收。**
 
 ```text
 [x] 产品架构与产品设计
