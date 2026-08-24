@@ -2,7 +2,27 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
-最后更新：2026-07-28
+最后更新：2026-08-24
+
+## 2026-08-24｜安全加固本地实现与回归完成（待迁移、待部署）
+
+- 生产 API 已加入 Supabase Bearer 登录校验；匿名用户只能读取并用规则评分内置 SENet，上传材料的读取、上传、删除、重新生成、建会话和 AI 评分均按用户所有权隔离，非所有者统一返回 404。
+- 生产材料响应递归移除 `answer_guide`、`max_score`、`_hash` 和 `_owner_id`；评分请求固定为 q1/q2/q3 三道唯一题，回答、复述和材料 ID 均有长度/格式约束，模型分数由服务端题目上限重新裁剪，掌握度限制在 0—100。
+- 上传只接受 UTF-8 Markdown 或有效 PDF，校验扩展名、MIME、大小、PDF 文件头与解析结果；删除公开 debug；Supabase 保存/删除失败会回滚并返回 503，不再假成功。
+- 前端 API 自动携带当前 Supabase access token；本地 profile、学习记录和活动会话按 `userId` 命名空间隔离，旧全局记录仅迁移到匿名区。认证世代号会使账号切换/退出前的材料、档案、学习、上传、评分、删除和重新生成请求自动失效，云端记录还校验请求发起时的 user id，避免 A 的晚返回写入 B。
+- 云同步结果改为界面可见；空 sections/questions 会阻止进入学习页；401/403/409/422/429 等服务端错误不再被演示数据掩盖。
+- 新增 `202608240001_security_hardening.sql`：materials owner 外键/索引、保留 ID 约束、4 表 Force RLS、10 条 owner 策略、仅 service role 可直连材料表，以及 service-role-only 的 UTC 原子 AI 日配额（evaluate/upload/regenerate = 50/10/10）。旧 ownerless 材料保留但普通账号不可见、不可写。
+- CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
+- 新增生产 API 安全回归矩阵；本地与生产 API 测试合计 **22 passed**。前端强制 TypeScript 检查与生产构建通过（JS 262.42 kB，gzip 84.02 kB），JavaScript 高危审计为 0，生产 API Python 编译与 Ruff E9/F 通过。
+- 本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料；GitHub 更新状态在本节随提交推送继续记录。
+
+### 当前阶段
+
+**阶段：安全修复已在 `codex/security-hardening` 本地分支完成，等待受控数据库迁移与部署前复核。**
+
+### 当前最高优先级
+
+先在 Supabase 受控环境应用 `202608240001_security_hardening.sql` 并运行更新后的只读 `db:check`；验证 RLS 与配额 RPC 后，再部署同一版本的 API/前端并完成“账号 A 上传 → 账号 B 不可见 → 账号 A 学习与评分”的生产闭环。
 
 ## 2026-08-21｜README 功能截图区补齐 ✅
 
@@ -336,7 +356,7 @@
 
 ## 当前阶段
 
-**阶段：v.3「纸上书房」+ 真实后端评分已上线，进入 DeepSeek AI 调用与首轮用户测试**
+**阶段：v.4 线上版本仍在运行；安全修复已在本地分支完成，待数据库迁移、部署与生产隔离验收。**
 
 ```text
 [x] 产品架构与产品设计
