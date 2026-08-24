@@ -21,7 +21,6 @@ import {
   cloudEnabled,
   getCloudProfile,
   logoutCloudAccount,
-  saveRecordToCloud,
   watchCloudAuth,
 } from "./lib/cloud";
 import type {
@@ -320,6 +319,13 @@ function App() {
           id: question.id,
           prompt: question.prompt,
         })),
+        ownerUserId,
+        activeReviewTask
+          ? {
+              source_session_id: activeReviewTask.source_session_id,
+              interval_days: activeReviewTask.interval_days,
+            }
+          : null,
       );
       if (authEpoch.current !== epoch) return;
       const completedWithReview: Session = activeReviewTask
@@ -333,7 +339,8 @@ function App() {
         : completed;
 
       setSession(completedWithReview);
-      // Save to local storage + try cloud (separate from API archive endpoint)
+      // Keep a local recovery copy; authenticated cloud persistence is completed
+      // by the evaluation endpoint from its server-owned scoring result.
       const record = {
         session: completedWithReview,
         archive: {
@@ -359,34 +366,23 @@ function App() {
       if (!cloudEnabled) {
         setArchive(localArchive);
         setSyncStatus("本次记录已保存在当前浏览器。");
-      } else {
+      } else if (completed.cloud_saved && ownerUserId) {
+        setSyncStatus("本次记录已同步到云端。");
         try {
-          const synced = await saveRecordToCloud(record, ownerUserId);
+          const archiveItems = await api.archive();
           if (authEpoch.current !== epoch) return;
-          if (synced) {
-            setSyncStatus("本次记录已同步到云端。");
-            try {
-              const archiveItems = await api.archive();
-              if (authEpoch.current !== epoch) return;
-              setArchive(archiveItems);
-            } catch {
-              if (authEpoch.current === epoch) {
-                setArchive(localArchive);
-                setSyncStatus("记录已同步，但云端档案暂时无法刷新；当前显示本机副本。");
-              }
-            }
-          } else {
-            setArchive(localArchive);
-            setSyncStatus(
-              "本次记录仅保存在当前浏览器；登录后也不会自动迁移匿名记录。",
-            );
-          }
+          setArchive(archiveItems);
         } catch {
           if (authEpoch.current === epoch) {
             setArchive(localArchive);
-            setSyncStatus("云端同步失败，本次记录已安全保存在当前浏览器。");
+            setSyncStatus("记录已同步，但云端档案暂时无法刷新；当前显示本机副本。");
           }
         }
+      } else {
+        setArchive(localArchive);
+        setSyncStatus(
+          "本次记录仅保存在当前浏览器；登录后也不会自动迁移匿名记录。",
+        );
       }
     } catch (reason) {
       if (authEpoch.current === epoch) {

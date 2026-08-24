@@ -98,6 +98,7 @@ def test_short_markdown_upload_builds_a_readable_learning_flow(monkeypatch):
                 "material_id": material["id"],
                 "persona_id": "huangfeng",
                 "questions": material["questions"],
+                "expected_user_id": "test-user",
             },
         )
         assert completed.status_code == 200, completed.text
