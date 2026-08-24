@@ -14,6 +14,8 @@ import re
 import sys
 import time
 import uuid
+import urllib.error as _urlerror
+import urllib.parse as _urlparse
 import urllib.request as _urllib
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,7 +27,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field
@@ -34,17 +36,27 @@ logger = logging.getLogger(__name__)
 
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
 _supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
-_supa_key = (os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")).strip().strip('"')
+_supa_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip().strip('"')
+_supa_auth_key = (
+    os.getenv("SUPABASE_ANON_KEY", "")
+    or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
+    or os.getenv("NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY", "")
+    or _supa_service_key
+).strip().strip('"')
 
 
 def _supa_ok():
-    return bool(_supa_url and _supa_key)
+    return bool(_supa_url and _supa_service_key)
+
+
+def _service_headers() -> dict[str, str]:
+    return {"apikey": _supa_service_key, "Authorization": f"Bearer {_supa_service_key}"}
 
 
 def _supa_get(path: str):
     req = _urllib.Request(
         f"{_supa_url}/rest/v1/{path}",
-        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
+        headers=_service_headers(),
     )
     with _urllib.urlopen(req, timeout=10) as resp:
         return json.loads(resp.read().decode("utf-8"))
@@ -56,35 +68,109 @@ def _supa_up(table: str, body: dict):
         f"{_supa_url}/rest/v1/{table}?on_conflict=id",
         data=data,
         headers={
-            "apikey": _supa_key, "Authorization": f"Bearer {_supa_key}",
+            **_service_headers(),
             "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates",
         },
         method="POST",
     )
-    _urllib.urlopen(req, timeout=10)
+    with _urllib.urlopen(req, timeout=10):
+        pass
 
 
-def _supa_del(table: str, mid: str):
+def _supa_del(table: str, mid: str, user_id: str):
+    encoded_mid = _urlparse.quote(mid, safe="")
+    encoded_user = _urlparse.quote(user_id, safe="")
     req = _urllib.Request(
-        f"{_supa_url}/rest/v1/{table}?id=eq.{mid}",
-        headers={"apikey": _supa_key, "Authorization": f"Bearer {_supa_key}"},
+        f"{_supa_url}/rest/v1/{table}?id=eq.{encoded_mid}&user_id=eq.{encoded_user}",
+        headers=_service_headers(),
         method="DELETE",
     )
-    _urllib.urlopen(req, timeout=10)
+    with _urllib.urlopen(req, timeout=10):
+        pass
 
 
-def _load_supa_materials():
-    """Load materials from Supabase into in-memory store (called on cold start)."""
+def _supa_rpc(function_name: str, body: dict):
+    data = json.dumps(body).encode("utf-8")
+    req = _urllib.Request(
+        f"{_supa_url}/rest/v1/rpc/{function_name}",
+        data=data,
+        headers={**_service_headers(), "Content-Type": "application/json"},
+        method="POST",
+    )
+    with _urllib.urlopen(req, timeout=10) as resp:
+        raw = resp.read().decode("utf-8")
+    return json.loads(raw) if raw else None
+
+
+def _verify_access_token(token: str) -> str | None:
+    """Return the Supabase user id for a bearer token, or None when invalid."""
+    if not (_supa_url and _supa_auth_key and token):
+        return None
+    req = _urllib.Request(
+        f"{_supa_url}/auth/v1/user",
+        headers={"apikey": _supa_auth_key, "Authorization": f"Bearer {token}"},
+    )
+    try:
+        with _urllib.urlopen(req, timeout=5) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+    except (_urlerror.HTTPError, _urlerror.URLError, TimeoutError, ValueError):
+        return None
+    user_id = payload.get("id") if isinstance(payload, dict) else None
+    return user_id if isinstance(user_id, str) and user_id else None
+
+
+def _auth_user(authorization: str | None, *, required: bool) -> str | None:
+    if not authorization:
+        if required:
+            raise HTTPException(401, "请先登录。", headers={"WWW-Authenticate": "Bearer"})
+        return None
+    scheme, separator, token = authorization.partition(" ")
+    if separator != " " or scheme.lower() != "bearer" or not token.strip():
+        raise HTTPException(401, "登录凭据无效。", headers={"WWW-Authenticate": "Bearer"})
+    user_id = _verify_access_token(token.strip())
+    if not user_id:
+        raise HTTPException(401, "登录凭据无效或已过期。", headers={"WWW-Authenticate": "Bearer"})
+    return user_id
+
+
+def _consume_ai_quota(user_id: str, action: str) -> bool:
+    """Atomically consume one daily AI action through a service-role-only RPC."""
+    if not _supa_ok():
+        return False
+    try:
+        return _supa_rpc("consume_ai_quota", {"p_user_id": user_id, "p_action": action}) is True
+    except Exception as exc:
+        logger.warning("ai_quota_check_failed action=%s error=%s", action, type(exc).__name__)
+        return False
+
+
+def _require_ai_quota(user_id: str, action: str) -> None:
+    if not _consume_ai_quota(user_id, action):
+        raise HTTPException(429, "今日 AI 使用额度已用完，请明天再试。")
+
+
+def _load_supa_materials(user_id: str):
+    """Load only one authenticated user's materials into the shared process."""
     if not _supa_ok():
         return
     try:
-        rows = _supa_get("materials?select=payload_json&order=created_at.asc")
+        encoded_user = _urlparse.quote(user_id, safe="")
+        rows = _supa_get(
+            f"materials?select=payload_json,user_id&user_id=eq.{encoded_user}&order=created_at.asc"
+        )
         for row in (rows or []):
             p = row.get("payload_json")
-            if p and isinstance(p, dict) and p.get("id") and not store.get_material(p["id"]):
+            row_owner = row.get("user_id")
+            if (
+                p
+                and isinstance(p, dict)
+                and p.get("id") != "senet-cvpr-2018"
+                and row_owner == user_id
+            ):
+                p["_owner_id"] = user_id
                 store.seed_senet(p)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.warning("material_restore_failed error=%s", type(exc).__name__)
 
 # --- Config -------------------------------------------------------------------
 @dataclass(frozen=True)
@@ -109,30 +195,58 @@ class MemStore:
         self._chunks: Dict[str, list[dict]] = {}  # material_id -> [{text, embedding}]
 
     def seed_senet(self, senet: dict):
-        self._materials[senet["id"]] = senet
+        material_id = senet["id"]
+        if material_id == "senet-cvpr-2018" and material_id in self._materials:
+            return
+        self._materials[material_id] = senet
 
     def set_chunks(self, material_id: str, chunks: list[dict]):
         self._chunks[material_id] = chunks
 
-    def get_chunks(self, material_id: str) -> list[dict]:
+    def get_chunks(self, material_id: str, user_id: str | None) -> list[dict]:
+        if self.get_material(material_id, user_id) is None:
+            return []
         return self._chunks.get(material_id, [])
 
-    def list_materials(self) -> List[dict]:
-        return list(self._materials.values())
+    def list_materials(self, user_id: str | None) -> List[dict]:
+        return [
+            material for material in self._materials.values()
+            if material.get("id") == "senet-cvpr-2018"
+            or (user_id is not None and material.get("_owner_id") == user_id)
+        ]
 
-    def get_material(self, mid: str) -> dict | None:
-        return self._materials.get(mid)
+    def get_material(self, mid: str, user_id: str | None) -> dict | None:
+        material = self._materials.get(mid)
+        if material is None:
+            return None
+        if mid == "senet-cvpr-2018" or material.get("_owner_id") == user_id:
+            return material
+        return None
 
-    def create_session(self, sid: str, mid: str, pid: str) -> dict:
+    def delete_material(self, mid: str, user_id: str) -> bool:
+        if self.get_material(mid, user_id) is None:
+            return False
+        self._materials.pop(mid, None)
+        self._chunks.pop(mid, None)
+        return True
+
+    def create_session(self, sid: str, mid: str, pid: str, user_id: str | None) -> dict:
         s = {
             "id": sid, "material_id": mid, "persona_id": pid,
             "status": "active", "started_at": datetime.now(UTC).isoformat(),
+            "_owner_id": user_id,
         }
         self._sessions[sid] = s
         return s
 
-    def get_session(self, sid: str) -> dict | None:
-        return self._sessions.get(sid)
+    def get_session(self, sid: str, user_id: str | None) -> dict | None:
+        session = self._sessions.get(sid)
+        if session is not None and session.get("_owner_id") == user_id:
+            return session
+        return None
+
+    def has_session(self, sid: str) -> bool:
+        return sid in self._sessions
 
     def complete_session(self, sid: str, answers: list, retelling: str, result: dict) -> dict:
         s = self._sessions[sid]
@@ -142,8 +256,11 @@ class MemStore:
         s["result"] = result
         return s
 
-    def archive_rows(self) -> List[dict]:
-        return [s for s in self._sessions.values() if s["status"] == "completed"]
+    def archive_rows(self, user_id: str) -> List[dict]:
+        return [
+            s for s in self._sessions.values()
+            if s["status"] == "completed" and s.get("_owner_id") == user_id
+        ]
 
 
 store = MemStore()
@@ -221,7 +338,6 @@ SENET_MATERIAL = dict(
 )
 
 store.seed_senet(SENET_MATERIAL)
-_load_supa_materials()  # Restore uploaded materials from Supabase on cold start
 
 # Pre-chunk SENet for faster AI evaluation (built once per cold start)
 def _seed_senet_chunks():
@@ -603,20 +719,26 @@ async def evaluate_with_deepseek(
 
 # --- Pydantic request/response models ----------------------------------------
 
+class AnswerSubmission(BaseModel):
+    question_id: str = Field(min_length=2, max_length=2, pattern=r"^q[123]$")
+    response: str = Field(min_length=1, max_length=4000)
+
+
+class QuestionReference(BaseModel):
+    id: str = Field(min_length=2, max_length=2, pattern=r"^q[123]$")
+
+
 class EvaluationRequest(BaseModel):
-    answers: list[dict] = Field(default_factory=list)
-    retelling: str = ""
-    # The browser retains these fields even when a Vercel instance is recycled.
-    # They let us restore the correct session instead of silently scoring an
-    # uploaded material with the built-in SENet rules.
-    material_id: str = "senet-cvpr-2018"
-    persona_id: str = "huangfeng"
-    questions: list[dict] = Field(default_factory=list)
-
-
-class SessionCreate(BaseModel):
-    material_id: str
-    persona_id: str
+    answers: list[AnswerSubmission] = Field(min_length=3, max_length=3)
+    retelling: str = Field(min_length=1, max_length=6000)
+    material_id: str = Field(
+        default="senet-cvpr-2018",
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9_-]+$",
+    )
+    persona_id: str = Field(default="huangfeng", min_length=1, max_length=64)
+    questions: list[QuestionReference] = Field(default_factory=list, max_length=3)
 
 
 # --- FastAPI app -------------------------------------------------------------
@@ -632,6 +754,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def add_api_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+    return response
+
+
 PERSONAS = [
     dict(id="huangfeng", name="黄风教练", tagline="先把结论抓住，再一个公式一个公式拆。",
          tone="直接、短句、适度调侃", accent="别急着硬啃，先把这一步看明白。"),
@@ -640,6 +776,138 @@ PERSONAS = [
     dict(id="researcher", name="严格研究员", tagline="术语、公式、证据和边界，一个都不能混。",
          tone="严谨、直接、证据优先", accent="这句话需要证据。请区分论文结论与推断。"),
 ]
+
+
+_PRIVATE_MATERIAL_KEYS = {"answer_guide", "max_score", "_hash", "_owner_id"}
+
+
+def _public_material(value):
+    if isinstance(value, dict):
+        return {
+            key: _public_material(item)
+            for key, item in value.items()
+            if key not in _PRIVATE_MATERIAL_KEYS
+        }
+    if isinstance(value, list):
+        return [_public_material(item) for item in value]
+    return value
+
+
+def _public_session(session: dict) -> dict:
+    return {key: value for key, value in session.items() if not key.startswith("_")}
+
+
+def _get_material_for_user(material_id: str, user_id: str | None) -> dict | None:
+    material = store.get_material(material_id, user_id)
+    if material is None and user_id is not None and _supa_ok():
+        _load_supa_materials(user_id)
+        material = store.get_material(material_id, user_id)
+    return material
+
+
+def _validate_question_ids(submitted_ids: list[str], questions: list[dict]) -> None:
+    expected_ids = [str(question.get("id", "")) for question in questions]
+    required_ids = {"q1", "q2", "q3"}
+    if len(expected_ids) != 3 or set(expected_ids) != required_ids:
+        raise HTTPException(500, "材料题目配置无效。")
+    if (
+        len(submitted_ids) != 3
+        or set(submitted_ids) != required_ids
+        or set(submitted_ids) != set(expected_ids)
+    ):
+        raise HTTPException(422, "必须提交材料中的 3 道不同题目，题号不得修改。")
+
+
+def _bounded_int(value, minimum: int, maximum: int, default: int) -> int:
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        parsed = default
+    return max(minimum, min(parsed, maximum))
+
+
+def _safe_tags(value) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    result = []
+    for tag in value[:20]:
+        if isinstance(tag, str) and tag.strip():
+            clean = tag.strip()[:80]
+            if clean not in result:
+                result.append(clean)
+    return result
+
+
+def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
+    """Make provider output complete, material-bound, and mathematically bounded."""
+    expected = []
+    for question in questions:
+        qid = str(question.get("id", ""))
+        max_score = _bounded_int(question.get("max_score"), 1, 20, 4)
+        expected.append((qid, max_score))
+
+    raw_rows = result.get("question_results", []) if isinstance(result, dict) else []
+    raw_by_id = {}
+    if isinstance(raw_rows, list):
+        for row in raw_rows:
+            if isinstance(row, dict) and row.get("question_id") not in raw_by_id:
+                raw_by_id[row.get("question_id")] = row
+
+    normalized_rows = []
+    total_score = 0
+    total_max = 0
+    all_tags: list[str] = []
+    for qid, max_score in expected:
+        raw = raw_by_id.get(qid, {})
+        score = _bounded_int(raw.get("score"), 0, max_score, 0)
+        tags = _safe_tags(raw.get("misconception_tags"))
+        normalized = {
+            "question_id": qid,
+            "score": score,
+            "max_score": max_score,
+            "verdict": _verdict(score, max_score),
+            "feedback": str(raw.get("feedback", ""))[:2000],
+            "misconception_tags": tags,
+        }
+        if isinstance(raw.get("source"), dict):
+            normalized["source"] = raw["source"]
+        normalized_rows.append(normalized)
+        total_score += score
+        total_max += max_score
+        for tag in tags:
+            if tag not in all_tags:
+                all_tags.append(tag)
+
+    raw_retelling = result.get("retelling", {}) if isinstance(result, dict) else {}
+    if not isinstance(raw_retelling, dict):
+        raw_retelling = {}
+    retelling_score = _bounded_int(raw_retelling.get("score"), 0, 5, 0)
+    retelling_tags = _safe_tags(raw_retelling.get("misconception_tags"))
+    for tag in retelling_tags:
+        if tag not in all_tags:
+            all_tags.append(tag)
+    denominator = total_max + 5
+    mastery = round((total_score + retelling_score) / denominator * 100) if denominator else 0
+    mastery = _bounded_int(mastery, 0, 100, 0)
+    headline = str(result.get("headline", "本次诊断已完成。"))[:500]
+    return {
+        "total_score": total_score + retelling_score,
+        "max_score": denominator,
+        "mastery": mastery,
+        "headline": headline,
+        "summary": str(result.get("summary", headline))[:2000],
+        "question_results": normalized_rows,
+        "retelling": {
+            "score": retelling_score,
+            "max_score": 5,
+            "verdict": _verdict(retelling_score, 5),
+            "feedback": str(raw_retelling.get("feedback", ""))[:2000],
+            "misconception_tags": retelling_tags,
+        },
+        "misconception_tags": all_tags,
+        "review_sources": [],
+        "next_step": "回看材料中对应证据后再答一次。" if mastery < 60 else "继续用自己的话复述，并核对原文证据。",
+    }
 
 
 @app.get("/api/health")
@@ -663,12 +931,11 @@ def list_personas():
 
 
 @app.get("/api/materials")
-def list_materials():
-    materials = list(store.list_materials())
-    # On cold start without Supabase load, try again
-    if len(materials) <= 1 and _supa_ok():
-        _load_supa_materials()
-        materials = list(store.list_materials())
+def list_materials(authorization: str | None = Header(default=None, alias="Authorization")):
+    user_id = _auth_user(authorization, required=False)
+    if user_id is not None and _supa_ok():
+        _load_supa_materials(user_id)
+    materials = store.list_materials(user_id)
     return [
         dict(
             id=m["id"], title=m["title"], subtitle=m["subtitle"],
@@ -680,14 +947,15 @@ def list_materials():
 
 
 @app.get("/api/materials/{material_id}")
-def get_material(material_id: str):
-    m = store.get_material(material_id)
-    if m is None and _supa_ok():
-        _load_supa_materials()
-        m = store.get_material(material_id)
-    if m is None:
+def get_material(
+    material_id: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    user_id = _auth_user(authorization, required=material_id != "senet-cvpr-2018")
+    material = _get_material_for_user(material_id, user_id)
+    if material is None:
         raise HTTPException(404, "材料不存在。")
-    return m
+    return _public_material(material)
 
 
 # --- Upload & AI material generation ------------------------------------------
@@ -728,6 +996,10 @@ def _extract_text(filename: str, content: bytes) -> str:
             except Exception:
                 pass
             raise HTTPException(400, "PDF 文本提取失败，建议先转换为 Markdown 格式上传。")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(400, "PDF 文件无法解析或结构已损坏。") from exc
 
     raise HTTPException(400, "只支持 PDF、.md 和 .markdown 文件。")
 
@@ -776,16 +1048,6 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
     return parsed.model_dump()
 
 
-@app.get("/api/debug")
-def debug_info():
-    """Return basic debug info to confirm the function is alive."""
-    return {
-        "python": sys.version,
-        "supa_url": bool(_supa_url),
-        "supa_key": bool(_supa_key),
-        "materials_in_memory": len(store.list_materials()),
-        "sessions_in_memory": len(store._sessions),
-    }
 
 
 async def _ai_generate(filename: str, source_text: str) -> dict:
@@ -836,50 +1098,53 @@ async def _ai_generate(filename: str, source_text: str) -> dict:
 
 
 @app.post("/api/materials/upload", status_code=201)
-async def upload_material(file: UploadFile):
+async def upload_material(
+    file: UploadFile,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """Upload with dedup + text extraction + AI translation & smart questions."""
+    user_id = _auth_user(authorization, required=True)
+    assert user_id is not None
+
     mid = f"upload-{uuid.uuid4().hex[:12]}"
     filename = (file.filename or "untitled")
     title = FilePath(filename).stem
     suffix = FilePath(filename).suffix.lower()
+    allowed_types = {
+        ".md": {"text/markdown", "text/plain"},
+        ".markdown": {"text/markdown", "text/plain"},
+        ".pdf": {"application/pdf"},
+    }
+    if suffix not in allowed_types:
+        raise HTTPException(400, "只支持 PDF、.md 和 .markdown 文件。")
+    content_type = (file.content_type or "").lower().split(";", 1)[0].strip()
+    if content_type not in allowed_types[suffix]:
+        raise HTTPException(400, "文件类型与扩展名不匹配。")
     source_type = "pdf" if suffix == ".pdf" else "markdown"
 
     content = await file.read(10 * 1024 * 1024 + 1)
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "文件不能超过 10 MB。")
+    if not content:
+        raise HTTPException(400, "文件不能为空。")
+    if suffix == ".pdf" and not content.startswith(b"%PDF-"):
+        raise HTTPException(400, "PDF 文件签名无效。")
 
     # --- Duplicate detection (SHA-256 hash of first 1 MB) -----------------
     content_hash = hashlib.sha256(content[:1024*1024]).hexdigest()
-    for m in store.list_materials():
+    for m in store.list_materials(user_id):
         if m.get("_hash") == content_hash and m.get("source_type") == source_type:
             raise HTTPException(409, f"文件已存在：{m.get('title','')}")
 
     # --- Text extraction --------------------------------------------------
-    source_text = ""
-    if suffix in {".md", ".markdown"}:
-        try:
-            source_text = content.decode("utf-8")[:60000]
-        except UnicodeDecodeError:
-            source_text = content.decode("latin-1", errors="ignore")[:60000]
-    else:
-        try:
-            import pymupdf
-            doc = pymupdf.open(stream=content, filetype="pdf")
-            pages = []
-            for i, page in enumerate(doc[:30]):
-                pages.append(page.get_text("text"))
-            source_text = "\n".join(pages)
-        except Exception:
-            source_text = ""
-        if not source_text or len(source_text.strip()) < 50:
-            source_text = "[此 PDF 无法提取文本。请确认文件是文字型而非扫描版 PDF。]"
-        source_text = source_text[:60000]
+    source_text = _extract_text(filename, content)
 
     # --- AI generation (non-blocking — if it fails, material still works) ---
     ai_data = {}
     generation = {"status": "fallback", "message": "已先生成原文学习流；AI 题目与陪读内容尚未生成。"}
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     if has_ai and source_text and len(source_text) > 100:
+        _require_ai_quota(user_id, "upload")
         started_at = time.monotonic()
         try:
             ai_data = await _ai_generate(filename, source_text)
@@ -962,15 +1227,15 @@ async def upload_material(file: UploadFile):
     ai_questions = ai_data.get("questions", []) if ai_data else []
     if ai_questions and isinstance(ai_questions, list) and len(ai_questions) >= 3:
         questions = []
-        for q in ai_questions[:3]:
+        for index, q in enumerate(ai_questions[:3]):
             questions.append(dict(
-                id=q.get("id", f"q{len(questions)+1}"),
-                kind=q.get("kind", "concept"),
-                prompt=q.get("prompt", "请根据材料内容回答。"),
-                hint=q.get("hint", ""),
-                source=dict(label="上传文件", detail=q.get("source","")),
-                answer_guide=q.get("answer_guide", ""),
-                max_score=q.get("max_score", 4),
+                id=f"q{index + 1}",
+                kind=str(q.get("kind", "concept"))[:32],
+                prompt=str(q.get("prompt", "请根据材料内容回答。"))[:1000],
+                hint=str(q.get("hint", ""))[:500],
+                source=dict(label="上传文件", detail=str(q.get("source", ""))[:500]),
+                answer_guide=str(q.get("answer_guide", ""))[:2000],
+                max_score=_bounded_int(q.get("max_score"), 1, 20, 4),
             ))
     else:
         questions = [
@@ -996,15 +1261,18 @@ async def upload_material(file: UploadFile):
         questions=questions,
         generation=generation,
         _hash=content_hash,
+        _owner_id=user_id,
     )
     store.seed_senet(material)
 
     # Persist to Supabase so material survives cold starts
     if _supa_ok():
         try:
-            _supa_up("materials", {"id": mid, "payload_json": material})
-        except Exception:
-            pass
+            _supa_up("materials", {"id": mid, "user_id": user_id, "payload_json": material})
+        except Exception as exc:
+            logger.warning("material_persist_failed material_id=%s error=%s", mid, type(exc).__name__)
+            store.delete_material(mid, user_id)
+            raise HTTPException(503, "材料暂时无法安全保存，请稍后重试。") from exc
 
     # Keep source excerpts locally.  Embedding them here used to add a second
     # sequential DeepSeek request to upload and delay the first visible lesson.
@@ -1012,35 +1280,46 @@ async def upload_material(file: UploadFile):
     if chunk_texts:
         store.set_chunks(mid, [{"text": chunk} for chunk in chunk_texts])
 
-    return material
+    return _public_material(material)
 
 
 @app.delete("/api/materials/{material_id}")
-def delete_material(material_id: str):
+def delete_material(
+    material_id: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """Delete an uploaded material (not built-in SENet)."""
+    user_id = _auth_user(authorization, required=True)
+    assert user_id is not None
     if material_id == "senet-cvpr-2018":
         raise HTTPException(403, "内置材料不可删除。")
-    m = store.get_material(material_id)
-    if m is None:
+    material = _get_material_for_user(material_id, user_id)
+    if material is None:
         raise HTTPException(404, "材料不存在。")
-    store._materials.pop(material_id, None)
-    store._chunks.pop(material_id, None)
     if _supa_ok():
         try:
-            _supa_del("materials", material_id)
-        except Exception:
-            pass
+            _supa_del("materials", material_id, user_id)
+        except Exception as exc:
+            logger.warning("material_delete_persist_failed material_id=%s error=%s", material_id, type(exc).__name__)
+            raise HTTPException(503, "材料暂时无法安全删除，请稍后重试。") from exc
+    store.delete_material(material_id, user_id)
     return {"deleted": material_id}
 
 
 @app.post("/api/materials/{material_id}/regenerate")
-async def regenerate_material(material_id: str):
+async def regenerate_material(
+    material_id: str,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
     """Re-run AI translation + questions on an existing material."""
+    user_id = _auth_user(authorization, required=True)
+    assert user_id is not None
     if material_id == "senet-cvpr-2018":
         raise HTTPException(403, "内置材料不需要重新生成。")
-    m = store.get_material(material_id)
+    m = _get_material_for_user(material_id, user_id)
     if m is None:
         raise HTTPException(404, "材料不存在。")
+    original_material = json.loads(json.dumps(m))
 
     source_text = ""
     for s in m.get("sections", []):
@@ -1051,6 +1330,7 @@ async def regenerate_material(material_id: str):
     filename = m.get("title", "untitled")
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise HTTPException(503, "DeepSeek API 未配置，暂时无法重新生成。")
+    _require_ai_quota(user_id, "regenerate")
     started_at = time.monotonic()
     try:
         ai_data = await _ai_generate(filename, source_text)
@@ -1081,107 +1361,128 @@ async def regenerate_material(material_id: str):
         ai_questions = ai_data.get("questions", [])
         if ai_questions and isinstance(ai_questions, list) and len(ai_questions) >= 3:
             m["questions"] = [dict(
-                id=q.get("id", f"q{i+1}"),
-                kind=q.get("kind", "concept"),
-                prompt=q.get("prompt", ""),
-                hint=q.get("hint", ""),
-                source=dict(label="上传文件", detail=q.get("source","")),
-                answer_guide=q.get("answer_guide", ""),
-                max_score=q.get("max_score", 4),
+                id=f"q{i + 1}",
+                kind=str(q.get("kind", "concept"))[:32],
+                prompt=str(q.get("prompt", ""))[:1000],
+                hint=str(q.get("hint", ""))[:500],
+                source=dict(label="上传文件", detail=str(q.get("source", ""))[:500]),
+                answer_guide=str(q.get("answer_guide", ""))[:2000],
+                max_score=_bounded_int(q.get("max_score"), 1, 20, 4),
             ) for i, q in enumerate(ai_questions[:3])]
 
         m["generation"] = {"status": "ready", "message": "AI 已重新生成针对性题目与陪读内容。"}
 
     # Re-persist
     if _supa_ok():
-        try: _supa_up("materials", {"id": material_id, "payload_json": m})
-        except Exception: pass
+        try:
+            _supa_up("materials", {"id": material_id, "user_id": user_id, "payload_json": m})
+        except Exception as exc:
+            logger.warning("material_persist_failed material_id=%s error=%s", material_id, type(exc).__name__)
+            store.seed_senet(original_material)
+            raise HTTPException(503, "材料更新暂时无法安全保存，请稍后重试。") from exc
 
-    return m
+    return _public_material(m)
 
 
 class CreateSessionRequest(BaseModel):
-    material_id: str
-    persona_id: str = "huangfeng"
-    questions: list[dict] | None = None
+    material_id: str = Field(min_length=1, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    persona_id: str = Field(default="huangfeng", min_length=1, max_length=64)
+    questions: list[QuestionReference] | None = Field(default=None, max_length=3)
 
 
 @app.post("/api/sessions", status_code=201)
-def create_session(req: CreateSessionRequest):
-    m = store.get_material(req.material_id)
-    if m is None and _supa_ok():
-        _load_supa_materials()
-        m = store.get_material(req.material_id)
-    if m is None:
-        # The client supplies the rendered questions so a cold start between
-        # loading an uploaded material and starting it does not discard the
-        # learner's actual material.  We still reject unknown IDs without that
-        # evidence instead of fabricating a SENet session.
-        if not req.questions:
-            raise HTTPException(404, "材料不存在。")
+def create_session(
+    req: CreateSessionRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    user_id = _auth_user(authorization, required=req.material_id != "senet-cvpr-2018")
+    material = _get_material_for_user(req.material_id, user_id)
+    if material is None:
+        raise HTTPException(404, "材料不存在。")
     if not any(p["id"] == req.persona_id for p in PERSONAS):
         raise HTTPException(400, "陪读人格不存在。")
+    _validate_question_ids(
+        [str(question.get("id", "")) for question in material.get("questions", [])],
+        material.get("questions", []),
+    )
     sid = uuid.uuid4().hex
-    s = store.create_session(sid, req.material_id, req.persona_id)
-    # Store questions in session to survive cold starts
-    if req.questions:
-        s["_questions"] = req.questions
-    return s
+    session = store.create_session(sid, req.material_id, req.persona_id, user_id)
+    return _public_session(session)
 
 
 @app.post("/api/sessions/{session_id}/evaluate")
-async def evaluate_session(session_id: str, req: EvaluationRequest):
-    s = store.get_session(session_id)
-    if s is None:
-        # Serverless memory can disappear between starting and submitting a
-        # session.  Restore the client-known material identity; never default
-        # an uploaded material to SENet, which would make its diagnosis false.
-        requested_material_id = req.material_id or "senet-cvpr-2018"
-        s = store.create_session(session_id, requested_material_id, req.persona_id)
-        if req.questions:
-            s["_questions"] = req.questions
-    if s["status"] == "completed":
+async def evaluate_session(
+    session_id: str,
+    req: EvaluationRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    if store.has_session(session_id):
+        stored = store._sessions[session_id]
+        required_auth = stored.get("material_id") != "senet-cvpr-2018"
+        user_id = _auth_user(authorization, required=required_auth)
+        session = store.get_session(session_id, user_id)
+        if session is None:
+            raise HTTPException(404, "学习会话不存在。")
+    else:
+        user_id = _auth_user(authorization, required=req.material_id != "senet-cvpr-2018")
+        material = _get_material_for_user(req.material_id, user_id)
+        if material is None:
+            raise HTTPException(404, "材料不存在。")
+        if not any(persona["id"] == req.persona_id for persona in PERSONAS):
+            raise HTTPException(400, "陪读人格不存在。")
+        session = store.create_session(session_id, req.material_id, req.persona_id, user_id)
+
+    if session.get("material_id") != req.material_id or session.get("persona_id") != req.persona_id:
+        raise HTTPException(422, "提交内容与学习会话不一致。")
+    if session["status"] == "completed":
         raise HTTPException(409, "该学习会话已经完成。")
 
-    material_id = s.get("material_id", "senet-cvpr-2018")
-    material = store.get_material(material_id)
-    if material is None and _supa_ok():
-        _load_supa_materials()
-        material = store.get_material(material_id)
-    questions = (material or {}).get("questions") or s.get("_questions", []) or req.questions
-    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
-    is_senet = (material or {}).get("id") == "senet-cvpr-2018"
-    chunks = store.get_chunks(s.get("material_id", "")) or []
-    mt = (material or {}).get("title", "")
+    material_id = session["material_id"]
+    material = _get_material_for_user(material_id, user_id)
+    if material is None:
+        raise HTTPException(404, "材料不存在。")
+    questions = material.get("questions", [])
+    answers = [answer.model_dump() for answer in req.answers]
+    _validate_question_ids([answer["question_id"] for answer in answers], questions)
 
-    if has_ai and questions:
+    has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
+    is_senet = material_id == "senet-cvpr-2018"
+    chunks = store.get_chunks(material_id, user_id)
+    material_title = material.get("title", "")
+
+    if is_senet:
+        result = evaluate_senet(dict(answers=answers, retelling=req.retelling))
+        result = _normalize_evaluation_result(result, questions)
+        result["evaluator"] = "rules"
+    elif has_ai:
+        assert user_id is not None
+        _require_ai_quota(user_id, "evaluate")
         started_at = time.monotonic()
         try:
             result = await evaluate_with_deepseek(
-                questions, req.answers, req.retelling,
-                material_chunks=chunks if not is_senet else None,
-                material_title=mt,
+                questions,
+                answers,
+                req.retelling,
+                material_chunks=chunks,
+                material_title=material_title,
             )
         except Exception as exc:
             logger.warning("deepseek_evaluation_failed session_id=%s material_id=%s error=%s", session_id, material_id, type(exc).__name__)
-            # AI failed — fall back to rules for SENet, error for others
-            if is_senet:
-                result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
-            else:
-                raise HTTPException(502, "AI 评分暂时不可用，请重试。")
+            raise HTTPException(502, "AI 评分暂时不可用，请重试。") from exc
         finally:
             logger.info("deepseek_evaluation_finished session_id=%s elapsed_ms=%d", session_id, int((time.monotonic() - started_at) * 1000))
-    elif is_senet:
-        result = evaluate_senet(dict(answers=req.answers, retelling=req.retelling))
+        result = _normalize_evaluation_result(result, questions)
+        result["evaluator"] = "ai"
     else:
-        raise HTTPException(502, "DeepSeek API 未配置，无法评分配上传材料。")
+        raise HTTPException(503, "DeepSeek API 未配置，无法评分上传材料。")
 
-    return store.complete_session(
+    completed = store.complete_session(
         session_id,
-        [dict(question_id=a.get("question_id",""), response=a.get("response","")) for a in req.answers],
+        answers,
         req.retelling,
         result,
     )
+    return _public_session(completed)
 
 
 # NOTE: /api/archive intentionally not implemented here.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArchiveView } from "./components/ArchiveView";
 import { AuthModal } from "./components/AuthModal";
 import { Dashboard } from "./components/Dashboard";
@@ -9,7 +9,13 @@ import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
 import { api, isDemo, isDegraded } from "./lib/api";
-import { loadProfile, saveStudyRecord } from "./lib/storage";
+import {
+  clearProfileAndActiveSession,
+  loadLocalArchive,
+  loadProfile,
+  saveProfile,
+  saveStudyRecord,
+} from "./lib/storage";
 import {
   cloudEnabled,
   getCloudProfile,
@@ -35,13 +41,16 @@ function App() {
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [syncStatus, setSyncStatus] = useState("");
   const [uploadStatus, setUploadStatus] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("register");
   const [userName, setUserName] = useState(
-    () => loadProfile()?.displayName || "",
+    () => (cloudEnabled ? "" : loadProfile()?.displayName || ""),
   );
+  const activeCloudUserId = useRef<string | null>(null);
+  const authEpoch = useRef(0);
 
   const persona = useMemo(
     () => personas.find((item) => item.id === selectedPersona) || personas[0],
@@ -49,11 +58,20 @@ function App() {
   );
 
   useEffect(() => {
-    Promise.all([api.materials(), api.personas(), api.archive()])
-      .then(([materialList, personaList, archiveItems]) => {
+    if (cloudEnabled) {
+      void api.personas()
+        .then(setPersonas)
+        .catch((reason: unknown) => {
+          setError(reason instanceof Error ? reason.message : "初始化失败。");
+        });
+      return;
+    }
+
+    Promise.all([api.materials(), api.personas()])
+      .then(([materialList, personaList]) => {
         setMaterials(materialList);
         setPersonas(personaList);
-        setArchive(archiveItems);
+        setArchive(loadLocalArchive());
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "初始化失败。");
@@ -62,69 +80,154 @@ function App() {
 
   useEffect(() => {
     if (!cloudEnabled) return;
-    void getCloudProfile().then((profile) => {
-      setUserName(profile?.displayName || "");
+
+    let disposed = false;
+
+    const applyProfile = (profile: Awaited<ReturnType<typeof getCloudProfile>>) => {
+      if (disposed) return;
+      const nextUserId = profile?.userId || null;
+      const identityChanged = activeCloudUserId.current !== nextUserId;
+      if (identityChanged) {
+        activeCloudUserId.current = nextUserId;
+        ++authEpoch.current;
+        setMaterial(null);
+        setSession(null);
+        setMaterials([]);
+        setArchive([]);
+        setBusy(false);
+        setDeletingId(null);
+        setUploadStatus("");
+        setSyncStatus("");
+        setError("");
+        setView((current) => current === "study" ? "home" : current);
+      }
+      const epoch = authEpoch.current;
       if (profile) {
-        void api.archive().then(setArchive).catch((reason: unknown) => {
-          setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
+        saveProfile(profile);
+      } else {
+        clearProfileAndActiveSession();
+      }
+      setUserName(profile?.displayName || "");
+      void api.materials().then((materialList) => {
+        if (!disposed && authEpoch.current === epoch) {
+          setMaterials(materialList);
+        }
+      }).catch((reason: unknown) => {
+        if (!disposed && authEpoch.current === epoch) {
+          setError(
+            reason instanceof Error
+              ? reason.message
+              : "账户切换后材料列表刷新失败。",
+          );
+        }
+      });
+      if (profile) {
+        void api.archive().then((archiveItems) => {
+          if (!disposed && authEpoch.current === epoch) {
+            setArchive(archiveItems);
+          }
+        }).catch((reason: unknown) => {
+          if (!disposed && authEpoch.current === epoch) {
+            setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
+          }
         });
       } else {
         setArchive([]);
       }
-    });
+    };
+
     let unsub: (() => void) | undefined;
-    watchCloudAuth((profile) => {
-      setUserName(profile?.displayName || "");
-      void api.archive().then(setArchive).catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
-      });
-    }).then((fn) => { unsub = fn; });
-    return () => { unsub?.(); };
+    void (async () => {
+      try {
+        const profile = await getCloudProfile();
+        if (disposed) return;
+        applyProfile(profile);
+        const stopWatching = await watchCloudAuth(applyProfile);
+        if (disposed) {
+          stopWatching();
+          return;
+        }
+        unsub = stopWatching;
+      } catch (reason: unknown) {
+        if (disposed) return;
+        ++authEpoch.current;
+        clearProfileAndActiveSession();
+        activeCloudUserId.current = null;
+        setMaterials([]);
+        setMaterial(null);
+        setSession(null);
+        setView("home");
+        setArchive([]);
+        setBusy(false);
+        setDeletingId(null);
+        setUploadStatus("");
+        setSyncStatus("");
+        setError(reason instanceof Error ? reason.message : "账户状态加载失败。");
+      }
+    })();
+    return () => {
+      disposed = true;
+      ++authEpoch.current;
+      unsub?.();
+    };
   }, []);
 
   async function startStudy(materialId: string, preloaded?: Material) {
+    const epoch = authEpoch.current;
     setBusy(true);
     setError("");
     try {
       const nextMaterial = preloaded || (await api.material(materialId));
-      // Pass questions to session so evaluation survives cold starts
-      const rawQuestions = (nextMaterial as Record<string, unknown>).questions as
-        Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }> | undefined;
+      if (authEpoch.current !== epoch) return;
+      if (!nextMaterial.sections.length || !nextMaterial.questions.length) {
+        throw new Error(
+          "这份材料尚未生成可验证的讲解与题目，请联网后重新生成再开始学习。",
+        );
+      }
       const nextSession = await api.createSession(
         materialId,
         selectedPersona,
-        rawQuestions?.map((q) => ({
-          id: q.id,
-          prompt: q.prompt,
-          answer_guide: q.answer_guide || "",
-          max_score: q.max_score ?? 4,
+        nextMaterial.questions.map((question) => ({
+          id: question.id,
+          prompt: question.prompt,
         })),
       );
+      if (authEpoch.current !== epoch) return;
       setMaterial(nextMaterial);
       setSession(nextSession);
       setView("study");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "无法开始学习。");
+      if (authEpoch.current === epoch) {
+        setError(reason instanceof Error ? reason.message : "无法开始学习。");
+      }
     } finally {
-      setBusy(false);
+      if (authEpoch.current === epoch) {
+        setBusy(false);
+      }
     }
   }
-
   async function upload(file: File) {
+    const epoch = authEpoch.current;
     setBusy(true);
     setError("");
     setUploadStatus(`正在解析 ${file.name}，并生成材料地图与题目…`);
     try {
       const uploaded = await api.upload(file);
+      if (authEpoch.current !== epoch) return;
       setMaterials((current) => [uploaded, ...current.filter((item) => item.id !== uploaded.id)]);
       setUploadStatus("材料已经准备好，正在进入陪读。");
       await startStudy(uploaded.id, uploaded);
+      if (authEpoch.current !== epoch) return;
     } catch (reason) {
-      const message = reason instanceof Error ? reason.message : "上传失败。";
-      setError(message);
-      setUploadStatus(message);
+      if (authEpoch.current === epoch) {
+        const message = reason instanceof Error ? reason.message : "上传失败。";
+        setError(message);
+        setUploadStatus(message);
+      }
     } finally {
-      setBusy(false);
+      if (authEpoch.current === epoch) {
+        setBusy(false);
+      }
     }
   }
 
@@ -132,29 +235,25 @@ function App() {
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
   ) {
+    const epoch = authEpoch.current;
+    const ownerUserId = activeCloudUserId.current;
     if (!session || !material || !persona) return;
     setBusy(true);
     setError("");
+    setSyncStatus("");
     try {
-      const rawQuestions = material.questions as Array<{
-        id: string;
-        prompt: string;
-        answer_guide?: string;
-        max_score?: number;
-      }>;
       const completed = await api.evaluate(
         session.id,
         answers,
         retelling,
         material.id,
         persona.id,
-        rawQuestions.map((question) => ({
+        material.questions.map((question) => ({
           id: question.id,
           prompt: question.prompt,
-          answer_guide: question.answer_guide || "",
-          max_score: question.max_score,
         })),
       );
+      if (authEpoch.current !== epoch) return;
       setSession(completed);
       // Save to local storage + try cloud (separate from API archive endpoint)
       const record = {
@@ -175,41 +274,90 @@ function App() {
         savedAt: new Date().toISOString(),
       };
       saveStudyRecord(record);
-      saveRecordToCloud(record).catch(() => {});
-      setArchive(await api.archive());
+      const localArchive = loadLocalArchive();
+
+      if (!cloudEnabled) {
+        setArchive(localArchive);
+        setSyncStatus("本次记录已保存在当前浏览器。");
+      } else {
+        try {
+          const synced = await saveRecordToCloud(record, ownerUserId);
+          if (authEpoch.current !== epoch) return;
+          if (synced) {
+            setSyncStatus("本次记录已同步到云端。");
+            try {
+              const archiveItems = await api.archive();
+              if (authEpoch.current !== epoch) return;
+              setArchive(archiveItems);
+            } catch {
+              if (authEpoch.current === epoch) {
+                setArchive(localArchive);
+                setSyncStatus("记录已同步，但云端档案暂时无法刷新；当前显示本机副本。");
+              }
+            }
+          } else {
+            setArchive(localArchive);
+            setSyncStatus(
+              "本次记录仅保存在当前浏览器；登录后也不会自动迁移匿名记录。",
+            );
+          }
+        } catch {
+          if (authEpoch.current === epoch) {
+            setArchive(localArchive);
+            setSyncStatus("云端同步失败，本次记录已安全保存在当前浏览器。");
+          }
+        }
+      }
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "诊断失败。");
+      if (authEpoch.current === epoch) {
+        setError(reason instanceof Error ? reason.message : "诊断失败。");
+      }
     } finally {
-      setBusy(false);
+      if (authEpoch.current === epoch) {
+        setBusy(false);
+      }
     }
   }
 
   async function deleteMaterial(materialId: string) {
     const target = materials.find((item) => item.id === materialId);
     if (!target || target.source_type === "builtin") return;
+    const epoch = authEpoch.current;
     if (!window.confirm(`确定永久删除“${target.title}”吗？此操作无法恢复。`)) return;
 
     setDeletingId(materialId);
     setError("");
     try {
       await api.deleteMaterial(materialId);
+      if (authEpoch.current !== epoch) return;
       setMaterials((current) => current.filter((item) => item.id !== materialId));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "删除失败。请稍后重试。");
+      if (authEpoch.current === epoch) {
+        setError(reason instanceof Error ? reason.message : "删除失败。请稍后重试。");
+      }
     } finally {
-      setDeletingId(null);
+      if (authEpoch.current === epoch) {
+        setDeletingId(null);
+      }
     }
   }
 
   async function navigate(next: View) {
+    const epoch = authEpoch.current;
     if (next === "archive") {
       try {
-        setArchive(await api.archive());
+        const archiveItems = await api.archive();
+        if (authEpoch.current !== epoch) return;
+        setArchive(archiveItems);
       } catch (reason) {
-        setError(reason instanceof Error ? reason.message : "档案加载失败。");
+        if (authEpoch.current === epoch) {
+          setError(reason instanceof Error ? reason.message : "档案加载失败。");
+        }
       }
     }
-    setView(next);
+    if (authEpoch.current === epoch) {
+      setView(next);
+    }
   }
 
   return (
@@ -226,13 +374,40 @@ function App() {
       demoMode={isDemo()}
       degraded={isDegraded()}
       onSignOut={() => {
+        const signOutEpoch = ++authEpoch.current;
         void logoutCloudAccount()
           .then(() => {
+            if (authEpoch.current !== signOutEpoch) return;
+            const publicEpoch = ++authEpoch.current;
+            activeCloudUserId.current = null;
+            clearProfileAndActiveSession();
             setUserName("");
             setArchive([]);
+            setMaterials([]);
+            setView("home");
+            setBusy(false);
+            setDeletingId(null);
+            setUploadStatus("");
+            setError("");
+            void api.materials().then((materialList) => {
+              if (authEpoch.current === publicEpoch) {
+                setMaterials(materialList);
+              }
+            }).catch((reason: unknown) => {
+              if (authEpoch.current === publicEpoch) {
+                setError(
+                  reason instanceof Error ? reason.message : "退出后材料列表刷新失败。",
+                );
+              }
+            });
+            setMaterial(null);
+            setSession(null);
+            setSyncStatus("");
           })
           .catch((reason: unknown) => {
-            setError(reason instanceof Error ? reason.message : "退出失败。");
+            if (authEpoch.current === signOutEpoch) {
+              setError(reason instanceof Error ? reason.message : "退出失败。");
+            }
           });
       }}
     >
@@ -267,10 +442,14 @@ function App() {
           onUpload={(file) => void upload(file)}
           onDelete={(id) => void deleteMaterial(id)}
           onRegenerate={(id) => {
+            const epoch = authEpoch.current;
             void api.regenerateMaterial(id).then((updated) => {
+              if (authEpoch.current !== epoch) return;
               setMaterials((prev) => prev.map((m) => m.id === id ? updated : m));
             }).catch((reason: unknown) => {
-              setError(reason instanceof Error ? reason.message : "重新生成失败。");
+              if (authEpoch.current === epoch) {
+                setError(reason instanceof Error ? reason.message : "重新生成失败。");
+              }
             });
           }}
         />
@@ -306,6 +485,11 @@ function App() {
         />
       )}
       {view === "archive" && <ArchiveView items={archive} />}
+      {syncStatus && (
+        <div className="degraded-bar" role="status">
+          {syncStatus}
+        </div>
+      )}
       <AuthModal
         key={authMode}
         open={authOpen}

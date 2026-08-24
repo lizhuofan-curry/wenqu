@@ -70,6 +70,17 @@ export function StudyFlow({
     }
   }, [session.result]);
 
+  if (!session.result && (!material.sections.length || !material.questions.length)) {
+    return (
+      <div className="study-flow page-enter">
+        <div className="global-error" role="alert">
+          这份材料尚未生成完整的讲解与题目，当前不能开始学习或评分。
+          <button onClick={onExit}>返回资料库</button>
+        </div>
+      </div>
+    );
+  }
+
   function goNext() {
     const next = stageOrder[Math.min(currentIndex + 1, stageOrder.length - 1)];
     setStage(next);

@@ -2,13 +2,18 @@ import type { ArchiveItem, Session } from "./types";
 
 const PROFILE_KEY = "wenqu-demo-profile-v1";
 const LEGACY_USER_KEY = "wenqu-demo-user";
-const ACTIVE_SESSION_KEY = "wenqu-demo-active-session-v1";
-const RECORDS_KEY = "wenqu-demo-study-records-v1";
+const LEGACY_ACTIVE_SESSION_KEY = "wenqu-demo-active-session-v1";
+const LEGACY_RECORDS_KEY = "wenqu-demo-study-records-v1";
+const ACTIVE_SESSION_PREFIX = "wenqu-active-session-v2";
+const RECORDS_PREFIX = "wenqu-study-records-v2";
+const LEGACY_MIGRATION_KEY = "wenqu-storage-v2-legacy-migrated";
+const ANONYMOUS_NAMESPACE = "anonymous";
 
 export type LocalProfile = {
   displayName: string;
   email: string;
   createdAt: string;
+  userId?: string;
 };
 
 export type LocalStudyRecord = {
@@ -28,6 +33,34 @@ function readJson<T>(key: string, fallback: T): T {
   }
 }
 
+function currentNamespace() {
+  return readJson<LocalProfile | null>(PROFILE_KEY, null)?.userId || ANONYMOUS_NAMESPACE;
+}
+
+function namespacedKey(prefix: string, namespace = currentNamespace()) {
+  return `${prefix}:${encodeURIComponent(namespace)}`;
+}
+
+function migrateLegacyAnonymousData() {
+  if (localStorage.getItem(LEGACY_MIGRATION_KEY)) return;
+
+  const anonymousRecordsKey = namespacedKey(RECORDS_PREFIX, ANONYMOUS_NAMESPACE);
+  const anonymousSessionKey = namespacedKey(ACTIVE_SESSION_PREFIX, ANONYMOUS_NAMESPACE);
+  const legacyRecords = localStorage.getItem(LEGACY_RECORDS_KEY);
+  const legacySession = localStorage.getItem(LEGACY_ACTIVE_SESSION_KEY);
+
+  if (legacyRecords && !localStorage.getItem(anonymousRecordsKey)) {
+    localStorage.setItem(anonymousRecordsKey, legacyRecords);
+  }
+  if (legacySession && !localStorage.getItem(anonymousSessionKey)) {
+    localStorage.setItem(anonymousSessionKey, legacySession);
+  }
+
+  localStorage.removeItem(LEGACY_RECORDS_KEY);
+  localStorage.removeItem(LEGACY_ACTIVE_SESSION_KEY);
+  localStorage.setItem(LEGACY_MIGRATION_KEY, new Date().toISOString());
+}
+
 export function loadProfile(): LocalProfile | null {
   const profile = readJson<LocalProfile | null>(PROFILE_KEY, null);
   if (profile) return profile;
@@ -40,18 +73,35 @@ export function loadProfile(): LocalProfile | null {
 
 export function saveProfile(profile: LocalProfile) {
   localStorage.setItem(PROFILE_KEY, JSON.stringify(profile));
+  localStorage.removeItem(LEGACY_USER_KEY);
+}
+
+export function clearProfileAndActiveSession() {
+  const namespace = currentNamespace();
+  localStorage.removeItem(PROFILE_KEY);
+  localStorage.removeItem(LEGACY_USER_KEY);
+  localStorage.removeItem(namespacedKey(ACTIVE_SESSION_PREFIX, namespace));
 }
 
 export function loadActiveSession(): Session | undefined {
-  return readJson<Session | undefined>(ACTIVE_SESSION_KEY, undefined);
+  migrateLegacyAnonymousData();
+  return readJson<Session | undefined>(
+    namespacedKey(ACTIVE_SESSION_PREFIX),
+    undefined,
+  );
 }
 
 export function saveActiveSession(session: Session) {
-  localStorage.setItem(ACTIVE_SESSION_KEY, JSON.stringify(session));
+  migrateLegacyAnonymousData();
+  localStorage.setItem(
+    namespacedKey(ACTIVE_SESSION_PREFIX),
+    JSON.stringify(session),
+  );
 }
 
 export function loadStudyRecords(): LocalStudyRecord[] {
-  return readJson<LocalStudyRecord[]>(RECORDS_KEY, []);
+  migrateLegacyAnonymousData();
+  return readJson<LocalStudyRecord[]>(namespacedKey(RECORDS_PREFIX), []);
 }
 
 export function loadLocalArchive(): ArchiveItem[] {
@@ -65,8 +115,8 @@ export function saveStudyRecord(record: LocalStudyRecord) {
     (item) => item.session.id !== record.session.id,
   );
   records.unshift(record);
-  localStorage.setItem(RECORDS_KEY, JSON.stringify(records));
-  localStorage.removeItem(ACTIVE_SESSION_KEY);
+  localStorage.setItem(namespacedKey(RECORDS_PREFIX), JSON.stringify(records));
+  localStorage.removeItem(namespacedKey(ACTIVE_SESSION_PREFIX));
 }
 
 export function exportLocalData() {

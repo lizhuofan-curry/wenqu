@@ -2,7 +2,39 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
-最后更新：2026-07-28
+最后更新：2026-08-24
+
+## 2026-08-24｜安全加固生产迁移与生产发布完成
+
+- 生产 API 已加入 Supabase Bearer 登录校验；匿名用户只能读取并用规则评分内置 SENet，上传材料的读取、上传、删除、重新生成、建会话和 AI 评分均按用户所有权隔离，非所有者统一返回 404。
+- 生产材料响应递归移除 `answer_guide`、`max_score`、`_hash` 和 `_owner_id`；评分请求固定为 q1/q2/q3 三道唯一题，回答、复述和材料 ID 均有长度/格式约束，模型分数由服务端题目上限重新裁剪，掌握度限制在 0—100。
+- 上传只接受 UTF-8 Markdown 或有效 PDF，校验扩展名、MIME、大小、PDF 文件头与解析结果；删除公开 debug；Supabase 保存/删除失败会回滚并返回 503，不再假成功。
+- 前端 API 自动携带当前 Supabase access token；本地 profile、学习记录和活动会话按 `userId` 命名空间隔离，旧全局记录仅迁移到匿名区。认证世代号会使账号切换/退出前的材料、档案、学习、上传、评分、删除和重新生成请求自动失效，云端记录还校验请求发起时的 user id，避免 A 的晚返回写入 B。同账号 `TOKEN_REFRESHED` 不再递增认证世代或卡住进行中状态；云端 profile 统一由 App 认证监听器落盘。
+- 云同步结果改为界面可见；空 sections/questions 会阻止进入学习页；401/403/409/422/429 等服务端错误不再被演示数据掩盖。
+- 新增 `202608240001_security_hardening.sql`：materials owner 外键/索引、保留 ID 约束、4 表 Force RLS、10 条 owner 策略、仅 service role 可直连材料表，以及 service-role-only 的 UTC 原子 AI 日配额（evaluate/upload/regenerate = 50/10/10）。旧 ownerless 材料保留但普通账号不可见、不可写。
+- CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
+- 新增生产 API 安全回归矩阵；完整 `pnpm check` 通过，其中 API 测试为 **23 passed**，仅有 1 条第三方 Starlette/httpx 弃用警告。前端强制 TypeScript 检查与生产构建、JavaScript 高危审计、生产 API Python 编译与 Ruff E9/F 均通过。
+- 修复已发布到 `codex/security-hardening-main`：该分支从最新 `origin/main`（`8ed99be`）重建，移植完成时相对主线 behind 0 / ahead 1；核心安全提交 `65b6e89`，认证竞态修复提交 `282f2b3`；草稿 PR #24 为 `MERGEABLE` / `CLEAN`，Web 与 API 两项 CI 均成功。旧 PR #23 已关闭，旧分支 `codex/security-hardening` 保留作历史记录。
+- 用户已明确接受“Free Plan 无可用备份，且迁移后 3 条无所有者历史材料对普通账号不可见”的具体影响。
+- 数据库只应用了 `202608240001_security_hardening.sql`；随后 `pnpm db:check` 通过，确认 4 张表启用并强制 RLS、10 条账号隔离策略、材料 owner 索引以及 AI 配额 RPC 与权限均符合预期。
+- Preview 首轮发现动态 API 缺失静态安全响应头后，已在应用中间件强制 `no-store` 与安全头；修复提交为 `f474e6c`。
+- 第二个 Preview deployment `dpl_4xcUyK13MqtQiBZYLf1BS9PDhfvz` 验收通过：匿名材料列表只显示内置材料，私有路由返回 401，内置材料会话以规则评分完成。
+- 真实临时账号 A/B 隔离验收通过：A 的上传材料对 B 的列表、详情、删除、重新生成和建会话均不可见或返回 404；测试材料与两个临时账号已完成清理。可清理验收脚本提交为 `72cdf23`。
+- 用户已明确授权将提交 `7842089` 对应的安全版本发布到 Vercel Production。
+- Production deployment `dpl_HynvKsiBZbsh6fStQCcj8XvczN28` 状态为 `Ready`，主域名 <https://wenqu-reading-room.vercel.app> 已绑定该部署。
+- 主域名 `/api/health` 返回 HTTP 200，`ai_configured=true`、provider 为 `deepseek`、model 为 `deepseek-v4-flash`。
+- 生产静态页面与动态 API 安全响应头均通过实测，动态 API 明确返回 `Cache-Control: no-store`。
+- 生产匿名材料列表只显示内置材料，匿名访问私有材料详情返回 401；匿名内置材料会话已用规则评分完成。
+- 生产真实临时账号 A/B 隔离再次通过，测试材料与两个临时账号均已清理。
+- 发布后 30 分钟范围内的 error 扫描和 HTTP 5xx 扫描均未发现日志。
+
+### 当前阶段
+
+**阶段：生产安全版本已上线，数据库隔离、动态 API 安全头、匿名边界、规则评分与真实 A/B 隔离均已通过生产验证。**
+
+### 当前最高优先级
+
+等待 PR #24 最新提交完成 CI 后合并到 `main`；随后进入持续监控与真实用户验证，继续区分部署健康、错误日志和实际学习闭环证据。
 
 ## 2026-08-21｜README 功能截图区补齐 ✅
 
@@ -336,7 +368,7 @@
 
 ## 当前阶段
 
-**阶段：v.3「纸上书房」+ 真实后端评分已上线，进入 DeepSeek AI 调用与首轮用户测试**
+**阶段：生产安全版本已上线并完成健康、响应头、匿名权限、规则评分与真实 A/B 隔离验收；等待 PR #24 完成 CI 后合并 `main`，随后进入监控与真实用户验证。**
 
 ```text
 [x] 产品架构与产品设计
