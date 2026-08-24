@@ -12,15 +12,16 @@
 - 新迁移先为 `study_records` 增加 nullable `server_verified_at`，历史行保持不可信；建表前发现任何确定性 `tr_...` 归档 ID 预占会 fail closed。`transfer_tasks` 强制 RLS 且无客户端 policy，完整 ACL 仅 service role 的 `SELECT/INSERT/UPDATE`；claim RPC 仅 service role 可执行。
 - 付费评分采用 at-most-once 状态机：只有 `ready` 可原子 claim；quota 或取材料在模型调用前失败时恢复，模型一旦发起后遇到 timeout/空响应/JSON 校验失败则保持 `evaluating`，第二次提交返回 409 且不再调用模型。完成结果先落私有任务，再幂等追加学习档案；归档失败复用签名恢复凭据，不重新评分。
 - CI 门禁已扩展到新 API 模块；完整 `pnpm check` 通过：前端 typecheck、Vite Production build（1803 modules）、两套 Ruff/Python 编译成功，后端 **56 passed**，仅 1 条第三方 Starlette/httpx 弃用警告。专项迁移测试 **23 passed**，其中包含迁移核心 **12 项**；`git diff --check` 通过。
+- 功能提交 `d1a901c` 已推送到 `codex/misconception-transfer`；stacked PR #34 以 PR #33 分支为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR 明确禁止绕过 #33 独立合并或部署。
 - 本阶段仍在 stacked 分支，尚未应用第二阶段生产迁移、合并或发布；不能宣称迁移检验已经上线。云同步恢复中心 PR #33 仍需先完成自己的数据库/密钥/Production 安全闸门。
 
 ### 当前阶段
 
-**阶段：错因驱动迁移检验代码、本地安全门禁和文档已完成，等待推送 stacked PR 与 GitHub CI；生产发布依赖 PR #33 先完成。**
+**阶段：错因驱动迁移检验代码、本地安全门禁、GitHub PR #34 与两项 CI 已完成；生产迁移、合并和发布依赖 PR #33 先完成。**
 
 ### 当前最高优先级
 
-推送当前 stacked 分支并等待 GitHub CI；随后保持发布顺序为“PR #33 的服务端独占写迁移与恢复密钥 → 云同步 Production 验收 → 迁移题第二阶段迁移与 ACL/RPC 验证 → 迁移题 Production 验收”。在这些生产闸门前继续开发下一项“延迟保持率”，不得提前把未上线能力写成生产可用。
+保持发布顺序为“PR #33 的服务端独占写迁移与恢复密钥 → 云同步 Production 验收 → 迁移题第二阶段迁移与 ACL/RPC 验证 → 合并 PR #34 → 迁移题 Production 验收”。等待生产闸门期间继续开发下一项“延迟保持率”，不得提前把未上线能力写成生产可用。
 
 ## 2026-08-25｜云同步恢复中心完成实现、双路复审与 GitHub CI
 
