@@ -46,6 +46,27 @@ Vercel 的 Production、Preview 和 Development 还必须配置至少 32 个 UTF
 
 迁移与环境变量属于生产安全闸门：先在 Preview 配置并验收，再单独批准生产数据库迁移和 Production 发布。执行后运行 `pnpm db:check`，确认策略与表权限和仓库预期一致。
 
+## 错因驱动迁移题
+
+迁移题依赖 `supabase/migrations/202608250002_transfer_tasks.sql`，且必须在 `202608250001_server_owned_study_records.sql` 已应用并验证后执行。第二阶段迁移会：
+
+- 为 `study_records` 增加 nullable `server_verified_at`；历史记录保持 `NULL`，仍可阅读，但不能作为可信迁移题来源；
+- 在建表前检查是否已有符合确定性任务 ID 格式的 `tr_...` 档案，发现预占即停止迁移，不覆盖、不删除；
+- 创建只供 `service_role` 读取、插入和更新的私有 `transfer_tasks`，不向 `anon` 或 `authenticated` 开放任何表权限或 RLS policy；
+- 创建仅 `service_role` 可执行的 `claim_transfer_task`，只允许同 owner 的 `ready` 任务原子切换为 `evaluating`；
+- 不自动回收 `evaluating`。供应商调用结果未知时宁可冻结并人工核对，也不自动重试造成第二次计费。
+
+推荐生产顺序：
+
+1. 应用并验收 `202608250001_server_owned_study_records.sql`；
+2. 配置合格的 `ARCHIVE_RETRY_SECRET`，部署并验收云同步恢复中心；
+3. 只读确认不存在 `study_records.session_id` 为 `tr_` 加 32 位十六进制字符的预占记录；
+4. 应用 `202608250002_transfer_tasks.sql`，运行 `pnpm db:check`；
+5. 确认 `authenticated` 对 `transfer_tasks` 无权限，`service_role` 仅有 `SELECT/INSERT/UPDATE`，claim RPC 仅 service role 可执行；
+6. 再部署迁移题应用，使用新完成的服务端可信基线做一次 prepare、一次评分和一次重复提交验收。
+
+不得把旧档案批量补写 `server_verified_at`，也不得通过浏览器或人工 SQL 伪造该字段。旧记录若要进入迁移训练，用户应重新完成一次学习基线。
+
 ## 验收
 
 1. 手机注册并确认邮箱。

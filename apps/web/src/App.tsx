@@ -8,6 +8,7 @@ import { MisconceptionsView } from "./components/MisconceptionsView";
 import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
 import { StudyFlow } from "./components/StudyFlow";
+import { TransferFlow } from "./components/TransferFlow";
 import { api, isDemo, isDegraded } from "./lib/api";
 import {
   clearProfileAndActiveSession,
@@ -21,7 +22,13 @@ import {
   type LocalStudyRecord,
   saveStudyRecord,
 } from "./lib/storage";
-import { buildReviewTasks, isReviewDue } from "./lib/reviews";
+import {
+  buildReviewTasks,
+  buildTransferCandidates,
+  countTransferDiagnoses,
+  countTransferSources,
+  isReviewDue,
+} from "./lib/reviews";
 import {
   cloudEnabled,
   getCloudProfile,
@@ -35,6 +42,10 @@ import type {
   Persona,
   Session,
   ReviewTask,
+  TransferAttemptResult,
+  TransferLink,
+  TransferTask,
+  TransferTaskCandidate,
 } from "./lib/types";
 function mergeArchiveWithLocalRecovery(
   cloudItems: ArchiveItem[],
@@ -64,6 +75,8 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
   const [activeReviewTask, setActiveReviewTask] = useState<ReviewTask | null>(null);
+  const [activeTransferTask, setActiveTransferTask] = useState<TransferTask | null>(null);
+  const [transferResult, setTransferResult] = useState<TransferAttemptResult>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [syncStatus, setSyncStatus] = useState("");
@@ -79,6 +92,7 @@ function App() {
   );
   const activeCloudUserId = useRef<string | null>(null);
   const authEpoch = useRef(0);
+  const transferRequestInFlight = useRef(false);
 
   const persona = useMemo(
     () => personas.find((item) => item.id === selectedPersona) || personas[0],
@@ -89,6 +103,20 @@ function App() {
       materials.some((candidate) => candidate.id === task.material_id),
     ),
     [archive, materials],
+  );
+  const transferCandidates = useMemo(
+    () => buildTransferCandidates(archive).filter((task) =>
+      materials.some((candidate) => candidate.id === task.material_id),
+    ),
+    [archive, materials],
+  );
+  const transferArchiveCount = useMemo(
+    () => countTransferDiagnoses(archive),
+    [archive],
+  );
+  const transferSourceCount = useMemo(
+    () => countTransferSources(archive),
+    [archive],
   );
 
   useEffect(() => {
@@ -128,6 +156,9 @@ function App() {
         setSession(null);
         setMaterials([]);
         setActiveReviewTask(null);
+        setActiveTransferTask(null);
+        setTransferResult(undefined);
+        transferRequestInFlight.current = false;
         setArchive([]);
         setBusy(false);
         setDeletingId(null);
@@ -203,6 +234,9 @@ function App() {
         setSession(null);
         setView("home");
         setActiveReviewTask(null);
+        setActiveTransferTask(null);
+        setTransferResult(undefined);
+        transferRequestInFlight.current = false;
         setArchive([]);
         setBusy(false);
         setDeletingId(null);
@@ -233,6 +267,9 @@ function App() {
       setSession(null);
       setMaterials([]);
       setActiveReviewTask(null);
+      setActiveTransferTask(null);
+      setTransferResult(undefined);
+      transferRequestInFlight.current = false;
       setArchive([]);
       setBusy(false);
       setDeletingId(null);
@@ -304,6 +341,8 @@ function App() {
       setMaterial(nextMaterial);
       setSession(nextSession);
       setActiveReviewTask(reviewTask || null);
+      setActiveTransferTask(null);
+      setTransferResult(undefined);
       setView("study");
     } catch (reason) {
       if (authEpoch.current === epoch) {
@@ -318,6 +357,189 @@ function App() {
   function startReview(task: ReviewTask) {
     if (!isReviewDue(task)) return;
     void startStudy(task.material_id, undefined, task);
+  }
+
+  async function startTransfer(candidate: TransferTaskCandidate) {
+    const ownerUserId = activeCloudUserId.current;
+    const epoch = authEpoch.current;
+    if (!ownerUserId || transferRequestInFlight.current) return;
+
+    transferRequestInFlight.current = true;
+    setBusy(true);
+    setError("");
+    setSyncStatus("");
+    try {
+      const task = await api.prepareTransfer(
+        candidate.source_session_id,
+        ownerUserId,
+      );
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) {
+        return;
+      }
+      setActiveReviewTask(null);
+      setActiveTransferTask(task);
+      setTransferResult(undefined);
+      setView("study");
+    } catch (reason) {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        setError(reason instanceof Error ? reason.message : "迁移题准备失败。");
+      }
+    } finally {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        transferRequestInFlight.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  async function evaluateTransfer(answer: string) {
+    const task = activeTransferTask;
+    const ownerUserId = activeCloudUserId.current;
+    const epoch = authEpoch.current;
+    if (!task || !ownerUserId || transferRequestInFlight.current) return;
+
+    const startedAt = new Date().toISOString();
+    transferRequestInFlight.current = true;
+    setBusy(true);
+    setError("");
+    setSyncStatus("");
+    try {
+      const result = await api.evaluateTransfer(
+        task.id,
+        task.source_session_id,
+        answer,
+        ownerUserId,
+      );
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) {
+        return;
+      }
+
+      const transfer: TransferLink = {
+        task_id: task.id,
+        source_session_id: task.source_session_id,
+        source_question_id: task.source_question_id,
+        misconception_code: task.target.code,
+        misconception_label: task.target.label,
+        verdict: result.verdict,
+      };
+      const mastery = result.max_score > 0
+        ? Math.round((result.score / result.max_score) * 100)
+        : 0;
+      const headline = `迁移检验：${
+        result.verdict === "transferred"
+          ? "已迁移"
+          : result.verdict === "partial"
+            ? "部分迁移"
+            : "尚未迁移"
+      }`;
+      const archiveItem: ArchiveItem = {
+        session_id: result.session_id,
+        material_id: task.material_id,
+        material_title: task.material_title,
+        persona_name: "迁移检验",
+        completed_at: result.completed_at,
+        mastery,
+        headline,
+        misconception_tags:
+          result.verdict === "transferred" ? [] : [task.target.label],
+        retelling: "",
+        answers: [{ question_id: "transfer", response: answer }],
+        transfer,
+      };
+      const transferSession: Session = {
+        id: result.session_id,
+        material_id: task.material_id,
+        persona_id: "transfer",
+        status: "completed",
+        started_at: startedAt,
+        completed_at: result.completed_at,
+        result: null,
+        transfer,
+        cloud_saved: result.cloud_saved,
+      };
+      const record: LocalStudyRecord = {
+        session: transferSession,
+        archive: archiveItem,
+        answers: archiveItem.answers || [],
+        retelling: "",
+        savedAt: new Date().toISOString(),
+        sync: !result.cloud_saved
+          ? result.cloud_retry_token
+            ? {
+                status: "pending",
+                ownerUserId,
+                retryToken: result.cloud_retry_token,
+                attempts: 0,
+              }
+            : {
+                status: "local-only",
+                ownerUserId,
+                attempts: 0,
+              }
+          : undefined,
+      };
+
+      saveStudyRecord(record, ownerUserId);
+      setTransferResult(result);
+      setPendingSyncRecords(loadPendingSyncRecords(ownerUserId));
+      setLocalOnlySyncRecords(loadLocalOnlySyncRecords(ownerUserId));
+      const localArchive = loadLocalArchive(ownerUserId);
+
+      if (result.cloud_saved) {
+        setSyncStatus("迁移结果已同步到云端。");
+        try {
+          const archiveItems = await api.archive();
+          if (
+            authEpoch.current === epoch &&
+            activeCloudUserId.current === ownerUserId
+          ) {
+            setArchive(mergeArchiveWithLocalRecovery(archiveItems, ownerUserId));
+          }
+        } catch {
+          if (
+            authEpoch.current === epoch &&
+            activeCloudUserId.current === ownerUserId
+          ) {
+            setArchive(localArchive);
+            setSyncStatus("迁移结果已同步，但云端档案暂时无法刷新；当前显示本机副本。");
+          }
+        }
+      } else {
+        setArchive(localArchive);
+        setSyncStatus(
+          result.cloud_retry_token
+            ? "迁移结果已保存在本机可信副本，可稍后重新同步。"
+            : "迁移结果仅保存在当前浏览器；服务端未签发恢复凭据。",
+        );
+      }
+    } catch (reason) {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        setError(reason instanceof Error ? reason.message : "迁移检验失败。");
+      }
+    } finally {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        transferRequestInFlight.current = false;
+        setBusy(false);
+      }
+    }
   }
 
   async function upload(file: File) {
@@ -664,7 +886,7 @@ function App() {
     <Shell
       view={view}
       onNavigate={(next) => void navigate(next)}
-      studyEnabled={Boolean(material && session)}
+      studyEnabled={Boolean((material && session) || activeTransferTask)}
       userName={userName}
       onAuth={(mode) => {
         setAuthMode(mode);
@@ -705,6 +927,9 @@ function App() {
             setMaterial(null);
             setSession(null);
             setActiveReviewTask(null);
+            setActiveTransferTask(null);
+            setTransferResult(undefined);
+            transferRequestInFlight.current = false;
             setSyncStatus("");
             setPendingSyncRecords([]);
             setLocalOnlySyncRecords([]);
@@ -739,6 +964,11 @@ function App() {
           archive={archive}
           reviewTasks={reviewTasks}
           onStartReview={startReview}
+          showTransferQueue={Boolean(activeCloudUserId.current)}
+          transferCandidates={transferCandidates}
+          transferArchiveCount={transferArchiveCount}
+          transferSourceCount={transferSourceCount}
+          onStartTransfer={(candidate) => void startTransfer(candidate)}
           pendingSyncRecords={pendingSyncRecords}
           localOnlySyncRecords={localOnlySyncRecords}
           syncingRecordId={syncingRecordId}
@@ -787,7 +1017,22 @@ function App() {
           }}
         />
       )}
-      {view === "study" && material && session && persona && (
+      {view === "study" && activeTransferTask && (
+        <TransferFlow
+          key={activeTransferTask.id}
+          task={activeTransferTask}
+          result={transferResult}
+          busy={busy}
+          onSubmit={(answer) => void evaluateTransfer(answer)}
+          onExit={() => {
+            const completed = Boolean(transferResult);
+            setActiveTransferTask(null);
+            setTransferResult(undefined);
+            void navigate(completed ? "archive" : "home");
+          }}
+        />
+      )}
+      {view === "study" && !activeTransferTask && material && session && persona && (
         <StudyFlow
           key={session.id}
           material={material}

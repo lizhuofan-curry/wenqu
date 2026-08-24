@@ -1,4 +1,4 @@
-import type { ArchiveItem } from "./types";
+import type { ArchiveItem, TransferLink } from "./types";
 import type { LocalProfile } from "./storage";
 
 type SupabaseClient = import("@supabase/supabase-js").SupabaseClient;
@@ -50,7 +50,11 @@ type CloudStudyRow = {
   misconception_tags: string[];
   retelling: string;
   answers: Array<{ question_id: string; response: string }>;
-  session_data: { review?: { source_session_id: string; interval_days: 1 | 3 | 7 } };
+  server_verified_at?: string | null;
+  session_data?: {
+    review?: { source_session_id: string; interval_days: 1 | 3 | 7 };
+    transfer?: TransferLink;
+  };
 };
 
 function friendlyAuthError(message: string) {
@@ -183,7 +187,7 @@ export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
   const { data, error } = await client
     .from("study_records")
     .select(
-      "session_id, material_id, material_title, persona_name, completed_at, mastery, headline, misconception_tags, retelling, answers, session_data",
+      "session_id, material_id, material_title, persona_name, completed_at, mastery, headline, misconception_tags, retelling, answers, session_data, server_verified_at",
     )
     .order("completed_at", { ascending: false });
   if (error) throw new Error(`云端档案加载失败：${error.message}`);
@@ -198,6 +202,8 @@ export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
     retelling: row.retelling,
     answers: row.answers || [],
     review: row.session_data?.review,
+    transfer: row.session_data?.transfer,
+    transfer_eligible: Boolean(row.server_verified_at),
     misconception_tags: row.misconception_tags || [],
   }));
 }

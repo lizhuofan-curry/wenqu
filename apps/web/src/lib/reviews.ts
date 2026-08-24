@@ -1,4 +1,4 @@
-import type { ArchiveItem, ReviewTask } from "./types";
+import type { ArchiveItem, ReviewTask, TransferTaskCandidate } from "./types";
 
 export const REVIEW_INTERVAL_DAYS = [1, 3, 7] as const;
 
@@ -21,7 +21,7 @@ export function buildReviewTasks(
   );
 
   return items
-    .filter((item) => !item.review)
+    .filter((item) => !item.review && !item.transfer)
     .flatMap((item) =>
       REVIEW_INTERVAL_DAYS.map((intervalDays) => {
         const dueAt = addUtcDays(item.completed_at, intervalDays);
@@ -50,6 +50,51 @@ export function buildReviewTasks(
       if (aDue !== bDue) return aDue ? -1 : 1;
       return a.due_at.localeCompare(b.due_at);
     });
+}
+
+function transferSources(items: ArchiveItem[]) {
+  return items.filter((item) => !item.review && !item.transfer);
+}
+
+export function countTransferDiagnoses(items: ArchiveItem[]) {
+  return transferSources(items).length;
+}
+
+export function countTransferSources(items: ArchiveItem[]) {
+  return transferSources(items).filter(
+    (item) =>
+      item.transfer_eligible === true &&
+      item.misconception_tags.length > 0,
+  ).length;
+}
+
+export function buildTransferCandidates(
+  items: ArchiveItem[],
+): TransferTaskCandidate[] {
+  const completedSourceIds = new Set(
+    items.flatMap((item) =>
+      item.transfer ? [item.transfer.source_session_id] : [],
+    ),
+  );
+
+  return transferSources(items)
+    .filter(
+      (item) =>
+        item.transfer_eligible === true &&
+        item.misconception_tags.length > 0 &&
+        !completedSourceIds.has(item.session_id),
+    )
+    .map((item) => ({
+      id: `transfer:${item.session_id}`,
+      source_session_id: item.session_id,
+      material_id: item.material_id,
+      material_title: item.material_title,
+      source_mastery: item.mastery,
+      target: {
+        code: "pending-server-selection",
+        label: item.misconception_tags[0],
+      },
+    }));
 }
 
 export function isReviewDue(task: ReviewTask, now = new Date()) {
