@@ -115,6 +115,20 @@ def _assert_private_keys_absent(value) -> None:
             _assert_private_keys_absent(child)
 
 
+def test_health_response_has_security_headers(api_client):
+    response = api_client.get("/api/health")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-store"
+    assert response.headers["pragma"] == "no-cache"
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["permissions-policy"] == (
+        "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    )
+
+
 def test_anonymous_only_sees_builtin_and_private_routes_require_auth(api_client):
     private = _private_material()
     index.store.seed_senet(private)
