@@ -187,7 +187,10 @@ def test_builtin_flow_is_public_and_anonymous_evaluation_never_calls_ai(
         json=_evaluation_payload("senet-cvpr-2018"),
     )
     assert completed.status_code == 200, completed.text
-    assert completed.json()["result"]["evaluator"] == "rules"
+    result = completed.json()["result"]
+    assert result["evaluator"] == "rules"
+    assert all(isinstance(row["source"], dict) for row in result["question_results"])
+    assert all(row["source"]["label"].startswith("PDF 第") for row in result["question_results"])
 
 
 def test_user_b_cannot_enumerate_or_mutate_user_a_material(api_client):

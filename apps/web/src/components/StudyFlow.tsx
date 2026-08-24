@@ -418,7 +418,11 @@ export function StudyFlow({
   );
 }
 
-function SourceBadge({ source }: { source: { label: string; detail?: string | null } }) {
+function SourceBadge({ source }: { source?: { label: string; detail?: string | null } | null }) {
+  if (!source) {
+    return <span className="source-badge">原文证据暂不可用</span>;
+  }
+
   return (
     <span className="source-badge" title={source.detail || undefined}>
       {source.label}

@@ -64,7 +64,7 @@ export type QuestionResult = {
   verdict: "掌握" | "部分掌握" | "需要回看";
   feedback: string;
   misconception_tags: string[];
-  source: SourceRef;
+  source?: SourceRef | null;
 };
 
 export type EvaluationResult = {
