@@ -4,7 +4,7 @@
 
 最后更新：2026-08-24
 
-## 2026-08-24｜安全加固本地实现与回归完成（待迁移、待部署）
+## 2026-08-24｜安全加固已推送 GitHub（待迁移、待部署）
 
 - 生产 API 已加入 Supabase Bearer 登录校验；匿名用户只能读取并用规则评分内置 SENet，上传材料的读取、上传、删除、重新生成、建会话和 AI 评分均按用户所有权隔离，非所有者统一返回 404。
 - 生产材料响应递归移除 `answer_guide`、`max_score`、`_hash` 和 `_owner_id`；评分请求固定为 q1/q2/q3 三道唯一题，回答、复述和材料 ID 均有长度/格式约束，模型分数由服务端题目上限重新裁剪，掌握度限制在 0—100。
@@ -14,11 +14,11 @@
 - 新增 `202608240001_security_hardening.sql`：materials owner 外键/索引、保留 ID 约束、4 表 Force RLS、10 条 owner 策略、仅 service role 可直连材料表，以及 service-role-only 的 UTC 原子 AI 日配额（evaluate/upload/regenerate = 50/10/10）。旧 ownerless 材料保留但普通账号不可见、不可写。
 - CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
 - 新增生产 API 安全回归矩阵；本地与生产 API 测试合计 **22 passed**。前端强制 TypeScript 检查与生产构建通过（JS 262.42 kB，gzip 84.02 kB），JavaScript 高危审计为 0，生产 API Python 编译与 Ruff E9/F 通过。
-- 本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料；GitHub 更新状态在本节随提交推送继续记录。
+- 安全实现、迁移、测试与本报告已由提交 `5f2c39f` 推送到 GitHub 分支 `codex/security-hardening`；因本地 `main` 与 `origin/main` 分叉 8/10，未直接覆盖或合并远端 `main`。本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料。
 
 ### 当前阶段
 
-**阶段：安全修复已在 `codex/security-hardening` 本地分支完成，等待受控数据库迁移与部署前复核。**
+**阶段：安全修复已推送到 GitHub `codex/security-hardening` 分支，等待受控数据库迁移、与最新 `origin/main` 对齐及部署前复核。**
 
 ### 当前最高优先级
 
