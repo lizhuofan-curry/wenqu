@@ -183,6 +183,53 @@ function App() {
     };
   }, []);
 
+  function handleCloudAuthSuccess(
+    profile: NonNullable<Awaited<ReturnType<typeof getCloudProfile>>>,
+  ) {
+    const nextUserId = profile.userId || null;
+    const identityChanged = activeCloudUserId.current !== nextUserId;
+    if (identityChanged) {
+      activeCloudUserId.current = nextUserId;
+      ++authEpoch.current;
+      setMaterial(null);
+      setSession(null);
+      setMaterials([]);
+      setActiveReviewTask(null);
+      setArchive([]);
+      setBusy(false);
+      setDeletingId(null);
+      setUploadStatus("");
+      setSyncStatus("");
+      setError("");
+      setView((current) => current === "study" ? "home" : current);
+    }
+    const epoch = authEpoch.current;
+    saveProfile(profile);
+    setUserName(profile.displayName);
+    void api.materials().then((materialList) => {
+      if (authEpoch.current === epoch) {
+        setMaterials(materialList);
+      }
+    }).catch((reason: unknown) => {
+      if (authEpoch.current === epoch) {
+        setError(
+          reason instanceof Error
+            ? reason.message
+            : "登录后材料列表刷新失败。",
+        );
+      }
+    });
+    void api.archive().then((archiveItems) => {
+      if (authEpoch.current === epoch) {
+        setArchive(archiveItems);
+      }
+    }).catch((reason: unknown) => {
+      if (authEpoch.current === epoch) {
+        setError(reason instanceof Error ? reason.message : "云端档案加载失败。");
+      }
+    });
+  }
+
   async function startStudy(
     materialId: string,
     preloaded?: Material,
@@ -536,7 +583,7 @@ function App() {
         open={authOpen}
         initialMode={authMode}
         onClose={() => setAuthOpen(false)}
-        onSuccess={(profile) => setUserName(profile.displayName)}
+        onSuccess={handleCloudAuthSuccess}
       />
     </Shell>
   );

@@ -201,7 +201,14 @@ export async function saveRecordToCloud(
 ) {
   const client = await getClient();
   if (!client) return false;
-  const userId = await currentUserId();
+  // Use the same client session that will authorize the following
+  // RLS-protected upsert. A second getUser() request can transiently fail
+  // immediately after login even when the local session is already valid.
+  const { data, error: sessionError } = await client.auth.getSession();
+  if (sessionError) {
+    throw new Error(`登录状态读取失败：${sessionError.message}`);
+  }
+  const userId = data.session?.user.id || null;
   if (!userId) return false;
   if (expectedUserId !== undefined && userId !== expectedUserId) return false;
   const { error } = await client
