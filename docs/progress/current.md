@@ -14,7 +14,7 @@
 - 新增 `202608240001_security_hardening.sql`：materials owner 外键/索引、保留 ID 约束、4 表 Force RLS、10 条 owner 策略、仅 service role 可直连材料表，以及 service-role-only 的 UTC 原子 AI 日配额（evaluate/upload/regenerate = 50/10/10）。旧 ownerless 材料保留但普通账号不可见、不可写。
 - CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
 - 新增生产 API 安全回归矩阵；本地与生产 API 测试合计 **22 passed**。前端强制 TypeScript 检查与生产构建通过（JS 262.42 kB，gzip 84.02 kB），JavaScript 高危审计为 0，生产 API Python 编译与 Ruff E9/F 通过。
-- 安全实现、迁移、测试与本报告已由提交 `5f2c39f` 推送到 GitHub 分支 `codex/security-hardening`；因本地 `main` 与 `origin/main` 分叉 8/10，未直接覆盖或合并远端 `main`。本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料。
+- 安全实现、迁移、测试与本报告已由提交 `5f2c39f` 推送到 GitHub 分支 `codex/security-hardening`，并创建草稿 PR #23；因该分支相对远端 `main` ahead 10 / behind 10，PR 已明确标注不得直接合并，需先移植到最新 `origin/main`。本轮未执行真实 Supabase 迁移、未部署，也未读取或修改真实用户材料。
 
 ### 当前阶段
 
