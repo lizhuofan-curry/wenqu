@@ -844,7 +844,7 @@ def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
     for question in questions:
         qid = str(question.get("id", ""))
         max_score = _bounded_int(question.get("max_score"), 1, 20, 4)
-        expected.append((qid, max_score))
+        expected.append((qid, max_score, question.get("source")))
 
     raw_rows = result.get("question_results", []) if isinstance(result, dict) else []
     raw_by_id = {}
@@ -857,7 +857,7 @@ def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
     total_score = 0
     total_max = 0
     all_tags: list[str] = []
-    for qid, max_score in expected:
+    for qid, max_score, question_source in expected:
         raw = raw_by_id.get(qid, {})
         score = _bounded_int(raw.get("score"), 0, max_score, 0)
         tags = _safe_tags(raw.get("misconception_tags"))
@@ -869,8 +869,15 @@ def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
             "feedback": str(raw.get("feedback", ""))[:2000],
             "misconception_tags": tags,
         }
-        if isinstance(raw.get("source"), dict):
-            normalized["source"] = raw["source"]
+        source = raw.get("source") if isinstance(raw.get("source"), dict) else question_source
+        if isinstance(source, dict):
+            detail = str(source.get("detail") or "")[:500]
+            normalized["source"] = {
+                "label": str(source.get("label") or "原文证据")[:500],
+                "detail": detail or None,
+            }
+        else:
+            normalized["source"] = {"label": "原文证据", "detail": None}
         normalized_rows.append(normalized)
         total_score += score
         total_max += max_score
