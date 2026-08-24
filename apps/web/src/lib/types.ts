@@ -93,6 +93,12 @@ export type Session = {
   started_at: string;
   completed_at?: string | null;
   result?: EvaluationResult | null;
+  review?: ReviewLink;
+};
+
+export type ReviewLink = {
+  source_session_id: string;
+  interval_days: 1 | 3 | 7;
 };
 
 export type ArchiveItem = {
@@ -105,4 +111,22 @@ export type ArchiveItem = {
   headline: string;
   misconception_tags: string[];
   retelling: string;
+  answers?: Array<{ question_id: string; response: string }>;
+  review?: ReviewLink;
+};
+
+export type ReviewTask = {
+  id: string;
+  source_session_id: string;
+  material_id: string;
+  material_title: string;
+  persona_name: string;
+  interval_days: 1 | 3 | 7;
+  due_at: string;
+  status: "pending" | "completed";
+  source_mastery: number;
+  source_headline: string;
+  source_misconception_tags: string[];
+  source_answers: Array<{ question_id: string; response: string }>;
+  source_retelling: string;
 };

@@ -16,6 +16,7 @@ import {
   saveProfile,
   saveStudyRecord,
 } from "./lib/storage";
+import { buildReviewTasks, isReviewDue } from "./lib/reviews";
 import {
   cloudEnabled,
   getCloudProfile,
@@ -29,6 +30,7 @@ import type {
   MaterialSummary,
   Persona,
   Session,
+  ReviewTask,
 } from "./lib/types";
 
 function App() {
@@ -39,6 +41,7 @@ function App() {
   const [material, setMaterial] = useState<Material | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
+  const [activeReviewTask, setActiveReviewTask] = useState<ReviewTask | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [syncStatus, setSyncStatus] = useState("");
@@ -55,6 +58,12 @@ function App() {
   const persona = useMemo(
     () => personas.find((item) => item.id === selectedPersona) || personas[0],
     [personas, selectedPersona],
+  );
+  const reviewTasks = useMemo(
+    () => buildReviewTasks(archive).filter((task) =>
+      materials.some((candidate) => candidate.id === task.material_id),
+    ),
+    [archive, materials],
   );
 
   useEffect(() => {
@@ -93,6 +102,7 @@ function App() {
         setMaterial(null);
         setSession(null);
         setMaterials([]);
+        setActiveReviewTask(null);
         setArchive([]);
         setBusy(false);
         setDeletingId(null);
@@ -157,6 +167,7 @@ function App() {
         setMaterial(null);
         setSession(null);
         setView("home");
+        setActiveReviewTask(null);
         setArchive([]);
         setBusy(false);
         setDeletingId(null);
@@ -172,7 +183,11 @@ function App() {
     };
   }, []);
 
-  async function startStudy(materialId: string, preloaded?: Material) {
+  async function startStudy(
+    materialId: string,
+    preloaded?: Material,
+    reviewTask?: ReviewTask,
+  ) {
     const epoch = authEpoch.current;
     setBusy(true);
     setError("");
@@ -195,6 +210,7 @@ function App() {
       if (authEpoch.current !== epoch) return;
       setMaterial(nextMaterial);
       setSession(nextSession);
+      setActiveReviewTask(reviewTask || null);
       setView("study");
     } catch (reason) {
       if (authEpoch.current === epoch) {
@@ -206,6 +222,11 @@ function App() {
       }
     }
   }
+  function startReview(task: ReviewTask) {
+    if (!isReviewDue(task)) return;
+    void startStudy(task.material_id, undefined, task);
+  }
+
   async function upload(file: File) {
     const epoch = authEpoch.current;
     setBusy(true);
@@ -254,20 +275,32 @@ function App() {
         })),
       );
       if (authEpoch.current !== epoch) return;
-      setSession(completed);
+      const completedWithReview: Session = activeReviewTask
+        ? {
+            ...completed,
+            review: {
+              source_session_id: activeReviewTask.source_session_id,
+              interval_days: activeReviewTask.interval_days,
+            },
+          }
+        : completed;
+
+      setSession(completedWithReview);
       // Save to local storage + try cloud (separate from API archive endpoint)
       const record = {
-        session: completed,
+        session: completedWithReview,
         archive: {
-          session_id: completed.id,
+          session_id: completedWithReview.id,
           material_id: material.id,
           material_title: material.title,
           persona_name: persona.name,
-          completed_at: completed.completed_at || new Date().toISOString(),
-          mastery: completed.result?.mastery ?? 0,
-          headline: completed.result?.headline || "本次学习已完成",
-          misconception_tags: completed.result?.misconception_tags || [],
+          completed_at: completedWithReview.completed_at || new Date().toISOString(),
+          mastery: completedWithReview.result?.mastery ?? 0,
+          headline: completedWithReview.result?.headline || "本次学习已完成",
+          misconception_tags: completedWithReview.result?.misconception_tags || [],
           retelling,
+          answers,
+          review: completedWithReview.review,
         },
         answers,
         retelling,
@@ -402,6 +435,7 @@ function App() {
             });
             setMaterial(null);
             setSession(null);
+            setActiveReviewTask(null);
             setSyncStatus("");
           })
           .catch((reason: unknown) => {
@@ -431,6 +465,8 @@ function App() {
           uploadStatus={uploadStatus}
           onNavigate={(next) => void navigate(next)}
           archive={archive}
+          reviewTasks={reviewTasks}
+          onStartReview={startReview}
         />
       )}
       {view === "materials" && (
@@ -476,12 +512,17 @@ function App() {
       )}
       {view === "study" && material && session && persona && (
         <StudyFlow
+          key={session.id}
           material={material}
           session={session}
           persona={persona}
           busy={busy}
+          reviewTask={activeReviewTask || undefined}
           onEvaluate={(answers, retelling) => void evaluate(answers, retelling)}
-          onExit={() => void navigate(session.result ? "archive" : "home")}
+          onExit={() => {
+            setActiveReviewTask(null);
+            void navigate(session.result ? "archive" : "home");
+          }}
         />
       )}
       {view === "archive" && <ArchiveView items={archive} />}
