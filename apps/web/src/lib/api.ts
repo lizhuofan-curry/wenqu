@@ -13,9 +13,8 @@ import {
   loadActiveSession,
   loadLocalArchive,
   saveActiveSession,
-  saveStudyRecord,
 } from "./storage";
-import { loadCloudArchive, saveRecordToCloud } from "./cloud";
+import { getCloudAccessToken, loadCloudArchive } from "./cloud";
 
 export class ApiError extends Error {
   constructor(
@@ -35,9 +34,15 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs?: number):
   const url = `${BASE_URL}${path}`;
   const controller = new AbortController();
   const signal = controller.signal;
+  const headers = new Headers(init?.headers);
+  const accessToken = await getCloudAccessToken().catch(() => null);
+  if (accessToken && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${accessToken}`);
+  }
 
   const pending = fetch(url, {
     ...init,
+    headers,
     signal,
   });
 
@@ -181,8 +186,9 @@ async function withDemo<T>(live: () => Promise<T>, fallback: () => T | Promise<T
     const value = await live();
     degraded = false;
     return value;
-  } catch {
+  } catch (error) {
     degraded = true;
+    if (error instanceof ApiError) throw error;
     return fallback();
   }
 }
@@ -213,7 +219,7 @@ export const api = {
     ),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),
-  createSession: async (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>) => {
+  createSession: async (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string }>) => {
     const fallback = () => {
       latestDemoSession = createDemoSession(personaId);
       saveActiveSession(latestDemoSession);
@@ -230,6 +236,7 @@ export const api = {
       return session;
     } catch (error) {
       degraded = true;
+      if (error instanceof ApiError && error.status < 500) throw error;
       // A local SENet copy is still evidence-backed.  An uploaded material is
       // user data, so it must fail visibly rather than borrow SENet's session.
       if (materialId !== "senet-cvpr-2018") throw error;
@@ -242,34 +249,10 @@ export const api = {
     retelling: string,
     materialId: string,
     personaId: string,
-    questions: Array<{ id: string; prompt: string; answer_guide?: string; max_score?: number }>,
+    questions: Array<{ id: string; prompt: string }>,
   ) => {
     const fallback = async () => {
-      const persona =
-        demoPersonas.find((item) => item.id === latestDemoSession?.persona_id) ||
-        demoPersonas[0];
       const completed = scoreLocal(answers, retelling);
-      const record = {
-        session: completed,
-        archive: {
-          session_id: completed.id,
-          material_id: completed.material_id,
-          material_title: demoMaterial.title,
-          persona_name: persona.name,
-          completed_at: completed.completed_at || new Date().toISOString(),
-          mastery: completed.result?.mastery || 0,
-          headline: completed.result?.headline || "本次学习已完成",
-          misconception_tags: completed.result?.misconception_tags || [],
-          retelling,
-        },
-        answers,
-        retelling,
-        savedAt: new Date().toISOString(),
-      };
-      saveStudyRecord(record);
-      saveRecordToCloud(record).catch((reason: unknown) => {
-        console.error("云端记录保存失败，本地已保存：", reason);
-      });
       return completed;
     };
     if (useDemo) return fallback();
@@ -283,6 +266,7 @@ export const api = {
       return completed;
     } catch (error) {
       degraded = true;
+      if (error instanceof ApiError && error.status < 500) throw error;
       if (materialId !== "senet-cvpr-2018") throw error;
       return fallback();
     }

@@ -1,6 +1,5 @@
 import type { ArchiveItem } from "./types";
 import {
-  loadStudyRecords,
   type LocalProfile,
   type LocalStudyRecord,
 } from "./storage";
@@ -84,6 +83,7 @@ function profileFromSession(session: AuthSession): LocalProfile {
         ? metadataName.trim()
         : email.split("@")[0] || "问渠学友",
     email,
+    userId: session.user.id,
     createdAt: session.user.created_at,
   };
 }
@@ -109,6 +109,13 @@ export async function getCloudProfile(): Promise<LocalProfile | null> {
   if (!client) return null;
   const { data } = await client.auth.getSession();
   return data.session ? profileFromSession(data.session) : null;
+}
+
+export async function getCloudAccessToken(): Promise<string | null> {
+  const client = await getClient();
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
+  return data.session?.access_token || null;
 }
 
 export async function watchCloudAuth(
@@ -158,7 +165,6 @@ export async function loginCloudAccount(email: string, password: string) {
     password,
   });
   if (error) throw new Error(friendlyAuthError(error.message));
-  await syncLocalRecordsToCloud();
   return profileFromSession(data.session);
 }
 
@@ -187,32 +193,20 @@ function toCloudRecord(record: LocalStudyRecord, userId: string) {
   };
 }
 
-export async function saveRecordToCloud(record: LocalStudyRecord) {
+export async function saveRecordToCloud(
+  record: LocalStudyRecord,
+  expectedUserId?: string | null,
+) {
   const client = await getClient();
   if (!client) return false;
   const userId = await currentUserId();
   if (!userId) return false;
+  if (expectedUserId !== undefined && userId !== expectedUserId) return false;
   const { error } = await client
     .from("study_records")
     .upsert(toCloudRecord(record, userId), { onConflict: "session_id,user_id" });
   if (error) throw new Error(`云端记录保存失败：${error.message}`);
   return true;
-}
-
-export async function syncLocalRecordsToCloud() {
-  const client = await getClient();
-  if (!client) return 0;
-  const userId = await currentUserId();
-  if (!userId) return 0;
-  const records = loadStudyRecords();
-  if (!records.length) return 0;
-  const { error } = await client
-    .from("study_records")
-    .upsert(records.map((record) => toCloudRecord(record, userId)), {
-      onConflict: "session_id,user_id",
-    });
-  if (error) throw new Error(`本地记录同步失败：${error.message}`);
-  return records.length;
 }
 
 export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {

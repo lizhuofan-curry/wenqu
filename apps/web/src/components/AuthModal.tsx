@@ -106,7 +106,7 @@ export function AuthModal({
         } else {
           const cloudProfile = await loginCloudAccount(profile.email, password);
           saveProfile(cloudProfile);
-          setSuccessMessage("登录成功，本机已有记录已同步到你的云端档案。");
+          setSuccessMessage("登录成功，已切换到该账户的云端档案；本机匿名记录不会自动迁移。");
           setDone(true);
           onSuccess(cloudProfile);
         }
