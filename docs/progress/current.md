@@ -14,22 +14,25 @@
 - 指标同时显示题目旧分保留率、基线/延迟正确率、净变化、实际间隔、有效/到期样本数、准时/迟到/失访与排除数；基线总分为 0 时不伪造百分比，提升超过基线时保持率封顶 100%，新增能力单列变化百分点。
 - 服务端已补齐可信来源、原始基线、服务器到期时间、材料 revision、重复间隔和原子 claim 校验；202608250003_retention_measurements.sql 创建 Force RLS 私有认领表、service-role-only RPC 和 retention-v1 唯一索引。该迁移尚未应用生产。
 - 洞察页已修正既有误导口径：不再把 mastery 柱图称为“有效时间”，不再固定声称“稳步上升”，也不再用同一平均数伪造三项能力；“已修正”改为证据更窄的“本轮未再次检出”。
-- 当前已通过前端 TypeScript、Production build（1805 modules）、保持率公式 **6 组场景**以及服务端安全/迁移专项 **33 passed**；完整 pnpm check 与最终 GitHub CI 尚待本轮收口后执行。
+- 延迟保持率提交 `4fde84f` 已推送并创建 stacked PR [#35](https://github.com/lizhuofan-curry/wenqu/pull/35)；保持率公式专项已扩展为 **8 组场景**，完整 `pnpm check` 通过（Production build 1805 modules，后端 **62 passed**，仅 1 条第三方弃用警告），PR #35 的 API 与 Web CI 均通过。
+- PR #34 已 retarget 到 `main`，API 与 Web CI 均通过；PR #35 仍以 PR #34 分支为 base，尚未合并。`202608250002_transfer_tasks.sql` 与 `202608250003_retention_measurements.sql` 均未获得本轮生产授权、未应用到 Production。
+- 真实 D1 保持率不能用合成时间或旧历史记录代替：必须在第二阶段上线后新建服务端可信 baseline，并在实际经过至少 24 小时后完成同口径复测才可验收。
 
 ### 当前阶段
 
-**阶段：云同步恢复中心已合并、完成生产迁移/密钥配置/Production 发布与真实重复恢复验收；延迟保持率主体实现完成，正在收口完整门禁、文档与 stacked PR。**
+**阶段：云同步恢复中心已上线；PR #34 已 retarget `main` 且 CI 通过；延迟保持率已提交为 `4fde84f`、stacked PR #35 的 API/Web CI 均通过，但 #35 尚未合并，第二、第三阶段迁移均未获授权或应用。**
 
 ### 当前最高优先级
 
-先完成延迟保持率完整 pnpm check、文档、提交、stacked PR 与 GitHub CI；生产发布仍必须保持顺序：
+先取得第二阶段生产授权，并严格保持以下发布与验收顺序：
 
 1. 先只读检查 tr_[0-9a-f]{32} 预占并应用 202608250002_transfer_tasks.sql；
-2. 验证第二阶段表/RPC ACL 后合并并发布 PR #34；
-3. 使用新生成的 server_verified_at 基线完成迁移题生产验收；
-4. 再评估 202608250003_retention_measurements.sql 与延迟保持率应用发布。
+2. 验证第二阶段表/RPC ACL 后合并并发布 PR #34，完成迁移题 Production 验收；
+3. 再单独取得授权、应用并验证 202608250003_retention_measurements.sql；
+4. 合并并发布 PR #35，创建新的 server_verified_at 可信 baseline；
+5. 实际等待至少 24 小时后完成真实 D1 同口径复测与保持率验收。
 
-不得把尚未应用的第二、第三阶段迁移或保持率代码写成已上线。
+不得把尚未合并的 PR #35、尚未应用的第二/第三阶段迁移，或尚未实际等待满 24 小时的 D1 写成已上线或已验收。
 最后更新：2026-08-25
 
 ## 2026-08-25｜错因驱动迁移检验完成实现与本地门禁
