@@ -901,7 +901,7 @@ def _validated_review_link(
             f"&session_id=eq.{encoded_source}&user_id=eq.{encoded_user}&limit=1"
         )
         prior_rows = _supa_get(
-            "study_records?select=session_id,session_data"
+            "study_records?select=session_id,server_verified_at,session_data"
             f"&user_id=eq.{encoded_user}"
             f"&session_data->review->>source_session_id=eq.{encoded_source}"
         )
@@ -941,7 +941,8 @@ def _validated_review_link(
         row_data = row.get("session_data")
         link = row_data.get("review") if isinstance(row_data, dict) else None
         if (
-            isinstance(link, dict)
+            row.get("server_verified_at")
+            and isinstance(link, dict)
             and link.get("source_session_id") == req.review_source_session_id
             and link.get("measurement_version") == 1
             and link.get("interval_days") in (1, 3, 7)

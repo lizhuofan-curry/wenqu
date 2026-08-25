@@ -103,6 +103,7 @@ def test_review_rejects_duplicate_trusted_interval(monkeypatch):
     prior = [
         {
             "session_id": "existing-review",
+            "server_verified_at": datetime.now(UTC).isoformat(),
             "session_data": {
                 "review": {
                     "source_session_id": "source-session",
@@ -118,6 +119,27 @@ def test_review_rejects_duplicate_trusted_interval(monkeypatch):
     assert rejected.value.status_code == 409
 
 
+def test_review_ignores_unverified_historical_duplicate(monkeypatch):
+    prior = [
+        {
+            "session_id": "historical-review",
+            "server_verified_at": None,
+            "session_data": {
+                "review": {
+                    "source_session_id": "source-session",
+                    "interval_days": 1,
+                    "measurement_version": 1,
+                }
+            },
+        }
+    ]
+    _configure(monkeypatch, _source(), prior)
+
+    link = _validate()
+
+    assert link["prior_completed_intervals"] == []
+
+
 def test_retention_migration_is_partial_unique_and_fail_closed():
     sql = Path(
         "supabase/migrations/202608250003_retention_measurements.sql"
@@ -126,10 +148,15 @@ def test_retention_migration_is_partial_unique_and_fail_closed():
     assert "raise exception" in sql
     assert "create unique index if not exists" in sql
     assert "measurement_version}' = '1'" in sql
+    assert "server_verified_at is not null" in sql
     assert "force row level security" in sql.lower()
     assert "claim_retention_measurement" in sql
     assert "to service_role;" in sql
     assert "to authenticated;" not in sql
+    assert "revoke all on table public.retention_measurement_claims from service_role" in sql
+    assert "set search_path = ''" in sql
+    assert not sql.lstrip().lower().startswith("begin;")
+    assert not sql.rstrip().lower().endswith("commit;")
 
 
 def test_review_claim_is_atomic_and_happens_before_scoring(monkeypatch):

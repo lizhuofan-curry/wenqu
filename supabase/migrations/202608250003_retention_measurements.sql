@@ -1,5 +1,3 @@
-begin;
-
 -- Historical review rows predate the trusted measurement contract and remain
 -- readable as archive evidence, but they are intentionally excluded from this
 -- uniqueness boundary and from retention-v1 metrics.
@@ -8,7 +6,8 @@ begin
   if exists (
     select 1
     from public.study_records
-    where session_data #>> '{review,measurement_version}' = '1'
+    where server_verified_at is not null
+      and session_data #>> '{review,measurement_version}' = '1'
     group by
       user_id,
       session_data #>> '{review,source_session_id}',
@@ -37,8 +36,7 @@ alter table public.retention_measurement_claims force row level security;
 revoke all on table public.retention_measurement_claims from public;
 revoke all on table public.retention_measurement_claims from anon;
 revoke all on table public.retention_measurement_claims from authenticated;
-grant select, insert, update, delete
-  on table public.retention_measurement_claims to service_role;
+revoke all on table public.retention_measurement_claims from service_role;
 
 create or replace function public.claim_retention_measurement(
   p_user_id uuid,
@@ -49,7 +47,7 @@ create or replace function public.claim_retention_measurement(
 returns boolean
 language plpgsql
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
 declare
   inserted_count integer;
@@ -97,7 +95,8 @@ on public.study_records (
   ((session_data #>> '{review,interval_days}')::integer)
 )
 where
-  session_data #>> '{review,measurement_version}' = '1'
+  server_verified_at is not null
+  and session_data #>> '{review,measurement_version}' = '1'
   and session_data #>> '{review,source_session_id}' is not null
   and session_data #>> '{review,interval_days}' in ('1', '3', '7');
 
@@ -107,5 +106,3 @@ comment on index public.study_records_unique_retention_measurement_v1 is
 -- The table remains server-owned under the RLS/privilege boundary established
 -- by 202608250001_server_owned_study_records.sql.  This migration grants no new
 -- client privilege and creates no client-writable policy.
-
-commit;
