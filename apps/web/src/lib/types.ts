@@ -94,6 +94,7 @@ export type Session = {
   completed_at?: string | null;
   result?: EvaluationResult | null;
   review?: ReviewLink;
+  transfer?: TransferLink;
   cloud_saved?: boolean;
   cloud_retry_token?: string | null;
 };
@@ -115,6 +116,8 @@ export type ArchiveItem = {
   retelling: string;
   answers?: Array<{ question_id: string; response: string }>;
   review?: ReviewLink;
+  transfer?: TransferLink;
+  transfer_eligible?: boolean;
 };
 
 export type ReviewTask = {
@@ -131,4 +134,55 @@ export type ReviewTask = {
   source_misconception_tags: string[];
   source_answers: Array<{ question_id: string; response: string }>;
   source_retelling: string;
+};
+
+export type TransferVerdict = "transferred" | "partial" | "not_yet";
+
+export type TransferTarget = {
+  code: string;
+  label: string;
+};
+
+export type TransferLink = {
+  task_id: string;
+  source_session_id: string;
+  source_question_id: string;
+  misconception_code: string;
+  misconception_label: string;
+  verdict: TransferVerdict;
+};
+
+export type TransferTaskCandidate = {
+  id: string;
+  source_session_id: string;
+  material_id: string;
+  material_title: string;
+  source_mastery: number;
+  target: TransferTarget;
+};
+
+export type TransferTask = {
+  id: string;
+  source_session_id: string;
+  source_question_id: string;
+  material_id: string;
+  material_title: string;
+  scenario_label: string;
+  target: TransferTarget;
+  prompt: string;
+  status: "ready" | "evaluating" | "completed";
+};
+
+export type TransferAttemptResult = {
+  session_id: string;
+  completed_at: string;
+  score: number;
+  max_score: number;
+  verdict: TransferVerdict;
+  feedback: string;
+  evidence: SourceRef[];
+  next_step: string;
+  evaluator: "rules" | "ai" | "deepseek";
+  cloud_saved: boolean;
+  cloud_retry_token?: string | null;
 };

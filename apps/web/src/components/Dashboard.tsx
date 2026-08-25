@@ -17,9 +17,16 @@ import {
 import { useRef } from "react";
 import type { CSSProperties } from "react";
 import type { LocalStudyRecord } from "../lib/storage";
-import type { ArchiveItem, MaterialSummary, Persona, ReviewTask } from "../lib/types";
+import type {
+  ArchiveItem,
+  MaterialSummary,
+  Persona,
+  ReviewTask,
+  TransferTaskCandidate,
+} from "../lib/types";
 import { ReviewQueue } from "./ReviewQueue";
 import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
+import { TransferQueue } from "./TransferQueue";
 
 type DashboardProps = {
   materials: MaterialSummary[];
@@ -36,6 +43,11 @@ type DashboardProps = {
   archive: ArchiveItem[];
   reviewTasks: ReviewTask[];
   onStartReview: (task: ReviewTask) => void;
+  showTransferQueue: boolean;
+  transferCandidates: TransferTaskCandidate[];
+  transferArchiveCount: number;
+  transferSourceCount: number;
+  onStartTransfer: (candidate: TransferTaskCandidate) => void;
   pendingSyncRecords: LocalStudyRecord[];
   localOnlySyncRecords: LocalStudyRecord[];
   syncingRecordId: string | null;
@@ -58,6 +70,11 @@ export function Dashboard({
   archive,
   reviewTasks,
   onStartReview,
+  showTransferQueue,
+  transferCandidates,
+  transferArchiveCount,
+  transferSourceCount,
+  onStartTransfer,
   pendingSyncRecords,
   localOnlySyncRecords,
   syncingRecordId,
@@ -129,6 +146,15 @@ export function Dashboard({
       </section>
 
 
+      {showTransferQueue && (
+        <TransferQueue
+          candidates={transferCandidates}
+          archiveCount={transferArchiveCount}
+          sourceCount={transferSourceCount}
+          busy={busy}
+          onStart={onStartTransfer}
+        />
+      )}
       <ReviewQueue
         tasks={reviewTasks}
         busy={busy}

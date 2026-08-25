@@ -61,7 +61,8 @@ def main() -> None:
                         'profiles',
                         'study_records',
                         'materials',
-                        'ai_quota_usage'
+                        'ai_quota_usage',
+                        'transfer_tasks'
                       )
                     order by c.relname
                     """
@@ -76,7 +77,8 @@ def main() -> None:
                         'profiles',
                         'study_records',
                         'materials',
-                        'ai_quota_usage'
+                        'ai_quota_usage',
+                        'transfer_tasks'
                       )
                     order by tablename, policyname
                     """
@@ -92,6 +94,16 @@ def main() -> None:
                     """
                 )
                 materials_owner_column = cursor.fetchone()
+                cursor.execute(
+                    """
+                    select data_type, is_nullable
+                    from information_schema.columns
+                    where table_schema = 'public'
+                      and table_name = 'study_records'
+                      and column_name = 'server_verified_at'
+                    """
+                )
+                study_record_verified_column = cursor.fetchone()
                 cursor.execute(
                     """
                     select confdeltype
@@ -237,6 +249,65 @@ def main() -> None:
                 study_record_privileges = set(cursor.fetchall())
                 cursor.execute(
                     """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_class c
+                    cross join lateral aclexplode(
+                      coalesce(c.relacl, acldefault('r', c.relowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where c.oid = 'public.transfer_tasks'::regclass
+                      and coalesce(grantee_role.rolname, 'PUBLIC') in (
+                        'PUBLIC', 'anon', 'authenticated', 'service_role'
+                      )
+                    """
+                )
+                transfer_task_privileges = set(cursor.fetchall())
+                cursor.execute(
+                    """
+                    select indexname, indexdef
+                    from pg_indexes
+                    where schemaname = 'public'
+                      and tablename = 'transfer_tasks'
+                    """
+                )
+                transfer_task_indexes = dict(cursor.fetchall())
+                cursor.execute(
+                    """
+                    select
+                      p.prosecdef,
+                      p.proconfig,
+                      owner_role.rolname,
+                      pg_get_functiondef(p.oid)
+                    from pg_proc p
+                    join pg_roles owner_role on owner_role.oid = p.proowner
+                    where p.oid = to_regprocedure(
+                      'public.claim_transfer_task(text,uuid)'
+                    )
+                    """
+                )
+                transfer_claim_function = cursor.fetchone()
+                cursor.execute(
+                    """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_proc p
+                    cross join lateral aclexplode(
+                      coalesce(p.proacl, acldefault('f', p.proowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where p.oid = to_regprocedure(
+                      'public.claim_transfer_task(text,uuid)'
+                    )
+                    """
+                )
+                transfer_claim_acl = set(cursor.fetchall())
+                cursor.execute(
+                    """
                     select exists (
                       select 1
                       from pg_trigger
@@ -273,6 +344,7 @@ def main() -> None:
         ("materials", True, True),
         ("profiles", True, True),
         ("study_records", True, True),
+        ("transfer_tasks", True, True),
     ]
     if tables != expected_tables:
         raise RuntimeError(f"表或 RLS/Force RLS 状态异常：{tables}")
@@ -339,6 +411,11 @@ def main() -> None:
         elif with_check is not None:
             raise RuntimeError(f"RLS 策略 {name} 不应设置 WITH CHECK：{with_check}")
 
+    if study_record_verified_column != ("timestamp with time zone", "YES"):
+        raise RuntimeError(
+            "study_records.server_verified_at 列不存在、类型错误或错误要求历史非空："
+            f"{study_record_verified_column}"
+        )
     if materials_owner_column != ("uuid", "YES"):
         raise RuntimeError(f"materials.user_id 列异常：{materials_owner_column}")
     if materials_owner_fk != ("c",):
@@ -428,6 +505,81 @@ def main() -> None:
             "study_records 表权限异常："
             f"{sorted(study_record_privileges)}"
         )
+    expected_transfer_task_privileges = {
+        ("service_role", "SELECT"),
+        ("service_role", "INSERT"),
+        ("service_role", "UPDATE"),
+    }
+    if transfer_task_privileges != expected_transfer_task_privileges:
+        raise RuntimeError(
+            "transfer_tasks 表权限异常："
+            f"{sorted(transfer_task_privileges)}"
+        )
+    required_transfer_indexes = {
+        "transfer_tasks_pkey",
+        "transfer_tasks_source_unique",
+        "transfer_tasks_user_status_idx",
+    }
+    missing_transfer_indexes = required_transfer_indexes - set(
+        transfer_task_indexes
+    )
+    if missing_transfer_indexes:
+        raise RuntimeError(
+            "transfer_tasks 缺少幂等或队列查询索引："
+            f"{sorted(missing_transfer_indexes)}"
+        )
+    user_status_index = _normalize_expression(
+        transfer_task_indexes["transfer_tasks_user_status_idx"]
+    )
+    if "(user_id,status,created_atdesc)" not in user_status_index:
+        raise RuntimeError(
+            "transfer_tasks 用户状态索引列顺序异常："
+            f"{transfer_task_indexes['transfer_tasks_user_status_idx']}"
+        )
+    if transfer_claim_function is None:
+        raise RuntimeError("迁移题原子 claim RPC 不存在。")
+    (
+        claim_is_security_definer,
+        claim_config,
+        claim_owner,
+        claim_definition,
+    ) = transfer_claim_function
+    if not claim_is_security_definer or not any(
+        setting.startswith("search_path=") for setting in (claim_config or [])
+    ):
+        raise RuntimeError(
+            "迁移题 claim RPC 缺少 security definer 或固定 search_path。"
+        )
+    normalized_claim = _normalize_expression(claim_definition)
+    if (
+        "task.user_id=p_user_id" not in normalized_claim
+        or "task.status='ready'" not in normalized_claim
+        or "interval" in normalized_claim
+    ):
+        raise RuntimeError(
+            "迁移题 claim RPC 未按所有者仅原子领取 ready 任务，或仍会超时抢占。"
+        )
+    claim_execute_grantees = {
+        grantee
+        for grantee, privilege in transfer_claim_acl
+        if privilege == "EXECUTE"
+    }
+    if "service_role" not in claim_execute_grantees:
+        raise RuntimeError("service_role 没有迁移题 claim RPC 执行权限。")
+    forbidden_claim_grantees = {"PUBLIC", "anon", "authenticated"}
+    unexpected_claim_grantees = (
+        claim_execute_grantees & forbidden_claim_grantees
+    )
+    if unexpected_claim_grantees:
+        raise RuntimeError(
+            "迁移题 claim RPC 错误暴露给："
+            f"{sorted(unexpected_claim_grantees)}"
+        )
+    if not claim_execute_grantees <= {claim_owner, "service_role"}:
+        raise RuntimeError(
+            "迁移题 claim RPC 存在额外执行者："
+            f"{sorted(claim_execute_grantees)}"
+        )
     if not trigger_exists:
         raise RuntimeError("新用户建档触发器不存在。")
 
@@ -440,8 +592,9 @@ def main() -> None:
             raise RuntimeError(f"Supabase Auth 状态异常：HTTP {response.status}")
 
     print(
-        "Supabase 验证通过：Auth 可用，4 张表启用并强制 RLS，"
-        "7 条账号隔离策略、服务端独占档案写入、材料所有者索引与 AI 原子配额均正常。"
+        "Supabase 验证通过：Auth 可用，5 张表启用并强制 RLS，"
+        "7 条账号隔离策略、服务端独占档案写入、迁移题私有表/索引/claim RPC、"
+        "材料所有者索引与 AI 原子配额均正常。"
     )
     print(f"账号统计：共 {total_users} 个，已确认邮箱 {confirmed_users} 个。")
     print(

@@ -34,6 +34,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field
 
+from api.transfer_core import material_rubric_fingerprint
+from api.transfer_routes import register_transfer_routes
+
 logger = logging.getLogger(__name__)
 
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
@@ -1648,6 +1651,7 @@ async def evaluate_session(
         result,
     )
     public_completed = _public_session(completed)
+    public_completed["rubric_fingerprint"] = material_rubric_fingerprint(material)
     cloud_saved = False
     retry_token = None
     if user_id is not None:
@@ -1670,6 +1674,7 @@ async def evaluate_session(
             "retelling": req.retelling,
             "answers": answers,
             "session_data": public_completed,
+            "server_verified_at": datetime.now(UTC).isoformat(),
             "saved_at": datetime.now(UTC).isoformat(),
         }
         if _supa_ok():
@@ -1716,3 +1721,18 @@ def retry_archive_save(
 # If we returned an empty array from this in-memory store, it would shadow the
 # real Supabase archive, so the frontend fallback never triggers.  Returning 404
 # lets the frontend's withDemo catch the error and fall back to Supabase/local.
+
+register_transfer_routes(
+    app,
+    supa_url=_supa_url,
+    service_headers=_service_headers,
+    supa_ok=_supa_ok,
+    supa_get=_supa_get,
+    supa_rpc=_supa_rpc,
+    auth_user=_auth_user,
+    get_material_for_user=_get_material_for_user,
+    get_chunks=store.get_chunks,
+    require_ai_quota=_require_ai_quota,
+    up_study_record=_supa_up_study_record,
+    sign_archive_retry=_sign_archive_retry,
+)

@@ -3,6 +3,8 @@ import type {
   MaterialSummary,
   Persona,
   Session,
+  TransferAttemptResult,
+  TransferTask,
 } from "./types";
 import {
   createDemoSession,
@@ -228,6 +230,34 @@ export const api = {
         expected_user_id: expectedUserId,
       }),
     }),
+  prepareTransfer: (sourceSessionId: string, expectedUserId: string) =>
+    request<TransferTask>("/transfer-tasks/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source_session_id: sourceSessionId,
+        expected_user_id: expectedUserId,
+      }),
+    }),
+  evaluateTransfer: (
+    taskId: string,
+    sourceSessionId: string,
+    answer: string,
+    expectedUserId: string,
+  ) =>
+    request<TransferAttemptResult>(
+      `/transfer-tasks/${encodeURIComponent(taskId)}/evaluate`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_session_id: sourceSessionId,
+          answer,
+          expected_user_id: expectedUserId,
+        }),
+      },
+      UPLOAD_TIMEOUT_MS,
+    ),
   createSession: async (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string }>) => {
     const fallback = () => {
       latestDemoSession = createDemoSession(personaId);
