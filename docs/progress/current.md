@@ -2,6 +2,34 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
+
+## 2026-08-25｜云同步恢复中心已上线；延迟保持率完成主体实现
+
+- 生产数据库已只执行并登记 202608250001_server_owned_study_records.sql：迁移前后 study_records 均为 **11 条**，无记录删除；最终 authenticated 完整表权限仅 SELECT，service role 仅 SELECT/INSERT，RLS 只保留 owner SELECT policy。
+- Vercel Production 已配置独立 48 字节随机 ARCHIVE_RETRY_SECRET，类型为 Sensitive/Secret；密钥未输出、未写入仓库或项目文档。PR #33 已合并为 51d9022，从该精确干净快照发布。
+- 当前 Production deployment 为 dpl_E7pkn7rBJPTrCxSRm2Fw91dRLesT，状态 READY，正式别名仍为 <https://wenqu-reading-room.vercel.app>。
+- 一次性生产账号验收通过：/api/health 返回恢复密钥配置有效；登录账号直接 POST study_records 返回 **403**；真实 SENet 规则评分为 **88 分**、evaluator=rules 且 cloud_saved=true。
+- 同一 HMAC 恢复凭据连续调用两次均成功，数据库核验只保留 **1 条**相同会话记录；临时测试账号与其评分/恢复记录已全部删除。阶段一恢复记录严格使用 PR #33 合同，没有提前伪造第二阶段 server_verified_at。
+- 延迟保持率主体代码已在 codex/delayed-retention 完成：云端档案读取保留题级结果和 rubric fingerprint；只比较精确来源、同题满分、同评分器、同 rubric 且服务端验证的 D1/D3/D7 记录，迁移题、复述分、旧历史记录和提前提交全部排除。
+- 指标同时显示题目旧分保留率、基线/延迟正确率、净变化、实际间隔、有效/到期样本数、准时/迟到/失访与排除数；基线总分为 0 时不伪造百分比，提升超过基线时保持率封顶 100%，新增能力单列变化百分点。
+- 服务端已补齐可信来源、原始基线、服务器到期时间、材料 revision、重复间隔和原子 claim 校验；202608250003_retention_measurements.sql 创建 Force RLS 私有认领表、service-role-only RPC 和 retention-v1 唯一索引。该迁移尚未应用生产。
+- 洞察页已修正既有误导口径：不再把 mastery 柱图称为“有效时间”，不再固定声称“稳步上升”，也不再用同一平均数伪造三项能力；“已修正”改为证据更窄的“本轮未再次检出”。
+- 当前已通过前端 TypeScript、Production build（1805 modules）、保持率公式 **6 组场景**以及服务端安全/迁移专项 **33 passed**；完整 pnpm check 与最终 GitHub CI 尚待本轮收口后执行。
+
+### 当前阶段
+
+**阶段：云同步恢复中心已合并、完成生产迁移/密钥配置/Production 发布与真实重复恢复验收；延迟保持率主体实现完成，正在收口完整门禁、文档与 stacked PR。**
+
+### 当前最高优先级
+
+先完成延迟保持率完整 pnpm check、文档、提交、stacked PR 与 GitHub CI；生产发布仍必须保持顺序：
+
+1. 先只读检查 tr_[0-9a-f]{32} 预占并应用 202608250002_transfer_tasks.sql；
+2. 验证第二阶段表/RPC ACL 后合并并发布 PR #34；
+3. 使用新生成的 server_verified_at 基线完成迁移题生产验收；
+4. 再评估 202608250003_retention_measurements.sql 与延迟保持率应用发布。
+
+不得把尚未应用的第二、第三阶段迁移或保持率代码写成已上线。
 最后更新：2026-08-25
 
 ## 2026-08-25｜错因驱动迁移检验完成实现与本地门禁

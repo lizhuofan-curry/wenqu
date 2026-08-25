@@ -858,8 +858,20 @@ class ArchiveRetryRequest(BaseModel):
     expected_user_id: str = Field(min_length=1, max_length=64)
 
 
+def _parse_server_datetime(value: object) -> datetime | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(UTC)
+
+
 def _validated_review_link(
-    req: EvaluationRequest, user_id: str | None, material_id: str, session_id: str
+    req: EvaluationRequest, user_id: str | None, material: dict, session_id: str
 ) -> dict | None:
     has_review_source = req.review_source_session_id is not None
     has_review_interval = req.review_interval_days is not None
@@ -877,25 +889,123 @@ def _validated_review_link(
         raise HTTPException(422, "复习间隔只能是 1、3 或 7 天。")
     if req.review_source_session_id == session_id:
         raise HTTPException(422, "复习记录不能引用自身。")
-    review_link = {
-        "source_session_id": req.review_source_session_id,
-        "interval_days": req.review_interval_days,
-    }
     if not _supa_ok():
-        return review_link
+        raise HTTPException(503, "云端复习来源暂时不可验证，本次不会生成保持率记录。")
+
     encoded_source = _urlparse.quote(req.review_source_session_id or "", safe="")
     encoded_user = _urlparse.quote(user_id, safe="")
     try:
         source_rows = _supa_get(
-            "study_records?select=session_id,material_id"
+            "study_records?select=session_id,material_id,completed_at,"
+            "server_verified_at,session_data"
             f"&session_id=eq.{encoded_source}&user_id=eq.{encoded_user}&limit=1"
+        )
+        prior_rows = _supa_get(
+            "study_records?select=session_id,session_data"
+            f"&user_id=eq.{encoded_user}"
+            f"&session_data->review->>source_session_id=eq.{encoded_source}"
         )
     except Exception as exc:
         logger.warning("review_source_check_failed error=%s", type(exc).__name__)
         raise HTTPException(502, "云端复习来源校验失败。") from exc
+
+    material_id = str(material.get("id", ""))
     if not source_rows or source_rows[0].get("material_id") != material_id:
         raise HTTPException(422, "复习来源记录不存在、材料不一致或不属于当前账号。")
-    return review_link
+    source = source_rows[0]
+    source_data = source.get("session_data")
+    if (
+        not source.get("server_verified_at")
+        or not isinstance(source_data, dict)
+        or source_data.get("review") is not None
+        or source_data.get("transfer") is not None
+    ):
+        raise HTTPException(422, "复习来源不是可信的原始学习基线。")
+
+    current_fingerprint = material_rubric_fingerprint(material)
+    source_fingerprint = source_data.get("rubric_fingerprint")
+    if source_fingerprint != current_fingerprint:
+        raise HTTPException(409, "材料或评分规则已经变化，旧基线不能继续比较。")
+    source_completed = _parse_server_datetime(source.get("completed_at"))
+    if source_completed is None:
+        raise HTTPException(422, "复习来源缺少可信的完成时间。")
+
+    interval_days = int(req.review_interval_days)
+    due_at = source_completed + timedelta(days=interval_days)
+    checked_at = datetime.now(UTC)
+    if checked_at < due_at:
+        raise HTTPException(425, "这次延迟复测尚未到期，请在计划时间后再提交。")
+
+    prior_intervals: set[int] = set()
+    for row in prior_rows if isinstance(prior_rows, list) else []:
+        row_data = row.get("session_data")
+        link = row_data.get("review") if isinstance(row_data, dict) else None
+        if (
+            isinstance(link, dict)
+            and link.get("source_session_id") == req.review_source_session_id
+            and link.get("measurement_version") == 1
+            and link.get("interval_days") in (1, 3, 7)
+        ):
+            prior_intervals.add(int(link["interval_days"]))
+    if interval_days in prior_intervals:
+        raise HTTPException(409, "这个来源的同一复习间隔已经完成，不能重复计入。")
+
+    return {
+        "source_session_id": req.review_source_session_id,
+        "interval_days": interval_days,
+        "source_completed_at": source_completed.isoformat(),
+        "due_at": due_at.isoformat(),
+        "source_rubric_fingerprint": source_fingerprint,
+        "measurement_version": 1,
+        "prior_completed_intervals": sorted(prior_intervals),
+    }
+
+
+def _finalize_review_link(review_link: dict | None, completed_at: str) -> dict | None:
+    if review_link is None:
+        return None
+    source_completed = _parse_server_datetime(review_link.get("source_completed_at"))
+    due_at = _parse_server_datetime(review_link.get("due_at"))
+    review_completed = _parse_server_datetime(completed_at)
+    if source_completed is None or due_at is None or review_completed is None:
+        raise HTTPException(500, "服务端无法生成可信复习时间记录。")
+    finalized = dict(review_link)
+    finalized["review_completed_at"] = review_completed.isoformat()
+    finalized["actual_delay_seconds"] = int(
+        (review_completed - source_completed).total_seconds()
+    )
+    finalized["timing_status"] = (
+        "on_time"
+        if review_completed <= due_at + timedelta(days=1)
+        else "late"
+    )
+    return finalized
+
+
+def _claim_review_measurement(
+    review_link: dict | None,
+    user_id: str | None,
+    session_id: str,
+) -> None:
+    if review_link is None:
+        return
+    if user_id is None:
+        raise HTTPException(422, "匿名学习不能认领可信复习测量。")
+    try:
+        claimed = _supa_rpc(
+            "claim_retention_measurement",
+            {
+                "p_user_id": user_id,
+                "p_source_session_id": review_link["source_session_id"],
+                "p_interval_days": review_link["interval_days"],
+                "p_session_id": session_id,
+            },
+        )
+    except Exception as exc:
+        logger.warning("review_measurement_claim_failed error=%s", type(exc).__name__)
+        raise HTTPException(502, "云端复习测量认领失败，本次尚未评分。") from exc
+    if claimed is not True:
+        raise HTTPException(409, "这个来源的同一复习间隔已被其他会话认领。")
 
 
 
@@ -1616,15 +1726,17 @@ async def evaluate_session(
     is_senet = material_id == "senet-cvpr-2018"
     chunks = store.get_chunks(material_id, user_id)
     material_title = material.get("title", "")
-    review_link = _validated_review_link(req, user_id, material_id, session_id)
+    review_link = _validated_review_link(req, user_id, material, session_id)
 
     if is_senet:
+        _claim_review_measurement(review_link, user_id, session_id)
         result = evaluate_senet(dict(answers=answers, retelling=req.retelling))
         result = _normalize_evaluation_result(result, questions)
         result["evaluator"] = "rules"
     elif has_ai:
         assert user_id is not None
         _require_ai_quota(user_id, "evaluate")
+        _claim_review_measurement(review_link, user_id, session_id)
         started_at = time.monotonic()
         try:
             result = await evaluate_with_deepseek(
@@ -1651,6 +1763,10 @@ async def evaluate_session(
         result,
     )
     public_completed = _public_session(completed)
+    review_link = _finalize_review_link(
+        review_link,
+        public_completed.get("completed_at") or datetime.now(UTC).isoformat(),
+    )
     public_completed["rubric_fingerprint"] = material_rubric_fingerprint(material)
     cloud_saved = False
     retry_token = None

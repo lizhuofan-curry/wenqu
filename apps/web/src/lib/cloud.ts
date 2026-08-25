@@ -1,4 +1,4 @@
-import type { ArchiveItem, TransferLink } from "./types";
+import type { ArchiveItem, EvaluationResult, ReviewLink, TransferLink } from "./types";
 import type { LocalProfile } from "./storage";
 
 type SupabaseClient = import("@supabase/supabase-js").SupabaseClient;
@@ -52,8 +52,10 @@ type CloudStudyRow = {
   answers: Array<{ question_id: string; response: string }>;
   server_verified_at?: string | null;
   session_data?: {
-    review?: { source_session_id: string; interval_days: 1 | 3 | 7 };
+    review?: ReviewLink;
     transfer?: TransferLink;
+    result?: EvaluationResult | null;
+    rubric_fingerprint?: string;
   };
 };
 
@@ -205,5 +207,8 @@ export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
     transfer: row.session_data?.transfer,
     transfer_eligible: Boolean(row.server_verified_at),
     misconception_tags: row.misconception_tags || [],
+    server_verified: Boolean(row.server_verified_at),
+    rubric_fingerprint: row.session_data?.rubric_fingerprint,
+    result: row.session_data?.result,
   }));
 }

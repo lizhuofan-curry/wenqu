@@ -29,6 +29,7 @@ def api_client(monkeypatch):
     )
     monkeypatch.setattr(index, "_supa_ok", lambda: False)
     monkeypatch.setattr(index, "_consume_ai_quota", lambda _user_id, _action: True)
+    monkeypatch.setattr(index, "_supa_rpc", lambda _name, _body: True)
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
 
     try:
@@ -105,6 +106,33 @@ def _evaluation_payload(material_id: str, ids=("q1", "q2", "q3")) -> dict:
         "material_id": material_id,
         "persona_id": "huangfeng",
     }
+
+def _trusted_review_source(*, days_ago: float = 1.5, session_data: dict | None = None):
+    completed_at = datetime.now(UTC) - timedelta(days=days_ago)
+    return {
+        "session_id": "source-session",
+        "material_id": "senet-cvpr-2018",
+        "completed_at": completed_at.isoformat(),
+        "server_verified_at": completed_at.isoformat(),
+        "session_data": session_data
+        if session_data is not None
+        else {
+            "rubric_fingerprint": index.material_rubric_fingerprint(
+                index.SENET_MATERIAL
+            ),
+            "result": {"question_results": []},
+        },
+    }
+
+
+def _review_lookup(source: dict, prior: list[dict] | None = None):
+    def lookup(path: str):
+        if "session_data->review->>source_session_id" in path:
+            return prior or []
+        return [source]
+
+    return lookup
+
 
 
 def _assert_private_keys_absent(value) -> None:
@@ -402,7 +430,7 @@ def test_authenticated_evaluation_persists_only_server_scoring(
     monkeypatch.setattr(
         index,
         "_supa_get",
-        lambda _path: [{"session_id": "source-session", "material_id": "senet-cvpr-2018"}],
+        _review_lookup(_trusted_review_source()),
     )
     writes = []
     monkeypatch.setattr(index, "_supa_up_study_record", writes.append)
@@ -438,10 +466,15 @@ def test_authenticated_evaluation_persists_only_server_scoring(
     assert record["mastery"] == evaluated.json()["result"]["mastery"]
     assert record["headline"] == evaluated.json()["result"]["headline"]
     assert record["headline"] != "客户端伪造标题"
-    assert record["session_data"]["review"] == {
-        "source_session_id": "source-session",
-        "interval_days": 1,
-    }
+    review = record["session_data"]["review"]
+    assert review["source_session_id"] == "source-session"
+    assert review["interval_days"] == 1
+    assert review["measurement_version"] == 1
+    assert review["timing_status"] == "on_time"
+    assert review["actual_delay_seconds"] >= int(1.5 * 86_400)
+    assert review["source_rubric_fingerprint"]
+    assert review["review_completed_at"] == record["completed_at"]
+    assert review["prior_completed_intervals"] == []
 
 
 def test_evaluation_does_not_persist_after_account_switch(api_client, monkeypatch):
@@ -550,7 +583,7 @@ def test_review_source_failure_happens_before_scoring_and_can_retry(
     monkeypatch.setattr(
         index,
         "_supa_get",
-        lambda _path: [{"session_id": "source-session", "material_id": "senet-cvpr-2018"}],
+        _review_lookup(_trusted_review_source()),
     )
     retried = api_client.post(
         f"/api/sessions/{started.json()['id']}/evaluate",

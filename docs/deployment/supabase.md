@@ -46,6 +46,17 @@ Vercel 的 Production、Preview 和 Development 还必须配置至少 32 个 UTF
 
 迁移与环境变量属于生产安全闸门：先在 Preview 配置并验收，再单独批准生产数据库迁移和 Production 发布。执行后运行 `pnpm db:check`，确认策略与表权限和仓库预期一致。
 
+### 2026-08-25 Production 执行记录
+
+- `202608250001_server_owned_study_records.sql` 已在生产执行；执行前后 `study_records` 均为 **11 条**，迁移未删除既有记录；
+- PR #33 已合并，merge commit 为 `51d9022`；
+- [Production 主站](https://wenqu-reading-room.vercel.app/) 已重新构建并处于 READY；
+- Production 已配置独立、至少 32 字节的 `ARCHIVE_RETRY_SECRET`，密钥值不写入仓库或本文档；
+- 登录账号直接向 `study_records` 插入记录返回 HTTP 403；
+- 内置 SENet 真实规则评分得到 88 分，响应确认 `cloud_saved=true`；
+- 同一 HMAC 恢复凭据连续提交两次，数据库最终只保留一条相同的服务端档案；
+- 验收使用的临时账号、评分记录、恢复记录与本地临时脚本均已清理。
+
 ## 错因驱动迁移题
 
 迁移题依赖 `supabase/migrations/202608250002_transfer_tasks.sql`，且必须在 `202608250001_server_owned_study_records.sql` 已应用并验证后执行。第二阶段迁移会：
@@ -66,6 +77,18 @@ Vercel 的 Production、Preview 和 Development 还必须配置至少 32 个 UTF
 6. 再部署迁移题应用，使用新完成的服务端可信基线做一次 prepare、一次评分和一次重复提交验收。
 
 不得把旧档案批量补写 `server_verified_at`，也不得通过浏览器或人工 SQL 伪造该字段。旧记录若要进入迁移训练，用户应重新完成一次学习基线。
+
+## 可信延迟保持率
+
+延迟保持率依赖 `supabase/migrations/202608250003_retention_measurements.sql`。它只接受同一账号、同一材料、同一服务端可信来源会话、同一评分器、同一完整题组与同一 rubric fingerprint 的 D1/D3/D7 复习，并以服务端时间判断是否到期。迁移会创建不向浏览器开放的测量占位表、仅供 `service_role` 执行的原子 claim RPC，以及防止同一来源与间隔重复落库的唯一约束。
+
+`202608250003_retention_measurements.sql` 依赖第二阶段迁移提供的 `server_verified_at`，因此生产顺序必须严格保持：
+
+1. `202608250001_server_owned_study_records.sql`（已生产执行并验收）；
+2. `202608250002_transfer_tasks.sql`（尚未获得生产授权，尚未应用）；
+3. `202608250003_retention_measurements.sql`（尚未获得生产授权，尚未应用）。
+
+在 002 与 003 分别完成只读预检、明确生产授权、迁移后 ACL/RPC 校验和应用发布前，不得把迁移题或延迟保持率标记为生产可用。真实 D1 保持率还必须等待新服务端可信基线产生并经过至少一个实际复习间隔，不能用即时重复评分代替。
 
 ## 验收
 

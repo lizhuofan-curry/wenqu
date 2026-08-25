@@ -600,7 +600,7 @@ function App() {
       const completedWithReview: Session = activeReviewTask
         ? {
             ...completed,
-            review: {
+            review: completed.review ?? {
               source_session_id: activeReviewTask.source_session_id,
               interval_days: activeReviewTask.interval_days,
             },
@@ -627,6 +627,10 @@ function App() {
           retelling,
           answers,
           review: completedWithReview.review,
+          server_verified: completed.cloud_saved === true,
+          transfer_eligible: completed.cloud_saved === true,
+          rubric_fingerprint: completedWithReview.rubric_fingerprint,
+          result: completedWithReview.result,
         },
         answers,
         retelling,
