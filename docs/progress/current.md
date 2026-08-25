@@ -13,15 +13,15 @@
 - 最终完整 `pnpm check` 退出码为 **0**：TypeScript、Vite Production build（**1810 modules**）、保持率 8 个场景、诊断 35 项断言、证据笔记 50 项断言、两套 Ruff/Python 编译与完整 API **96 passed**；仅保留 1 条既有 Starlette/httpx 第三方弃用警告。`git diff --check` 无错误，仅有既有 `package.json` CRLF 提示。
 - Playwright + Edge headless 真实走通桌面与 390px：创建、编辑、搜索、筛选、Markdown/JSON 导出、删除、闭卷入口隔离、Tab/Shift+Tab 焦点循环、Esc 回焦均通过；三处窄屏横向溢出为 0。浏览器发现并修复 `map:* / result:*` 合法位置被误报陈旧，以及移动端导航图标缺少可访问名称。截图保存在本地 `tmp/evidence-browser-*.png`，因 Windows helper 错误未做像素级人工目视，不把 DOM/截图生成冒充视觉审稿。
 - 安全终审与学习有效性终审均无阻塞：账号/匿名命名空间、导出白名单、闭卷阶段和正式评分/档案隔离通过；学习契约已按实际 `schema_version/id/owner_id/content/source` 与 JSON 导出字段回写，结构化 PDF 页、公式和 Figure 定位仍明确为未来增强。
-- 当前改动**尚未提交、尚未推送、尚未运行 GitHub CI、尚未合并或发布 Production**；本轮没有新增数据库迁移，也没有把浏览器笔记写成跨设备能力。
+- 功能提交 `999be3d` 已推送到 `codex/evidence-note-cards`；stacked PR [#38](https://github.com/lizhuofan-curry/wenqu/pull/38) 以 PR #37 的 `codex/adaptive-route` 为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR #38 当前 **OPEN、未合并、未发布 Production**；本轮没有新增数据库迁移，也没有把浏览器笔记写成跨设备能力。
 
 ### 当前阶段
 
-**阶段：本地证据笔记卡 MVP 已完成实现、安全白名单收口和本地专项/typecheck/build；仍是未提交工作区改动，未经过 GitHub CI 或发布。**
+**阶段：本地证据笔记卡 MVP 已完成实现、双路终审、完整门禁、真实浏览器验收、提交推送、stacked PR #38 与 GitHub API/Web CI；PR 仍 OPEN，未合并或发布。**
 
 ### 当前最高优先级
 
-完成本轮完整门禁与只读终审，确认正式评分/档案载荷隔离和移动端/键盘边界后，再提交到独立 `codex/` 功能分支、创建遵守既有 stacked 依赖顺序的 PR 并等待 GitHub CI；不得从当前脏工作树发布 Production。
+保持 PR #38 为 stacked OPEN 状态，不越过 PR #37 提前合并或部署；本地证据笔记不需要数据库迁移。按既定路线继续下一项“语音复述”，先定义无录音泄露、明确同意、转写与正式评分隔离的最小契约。
 
 
 ## 2026-08-25｜自适应学习路线 MVP 完成 GitHub 验证
