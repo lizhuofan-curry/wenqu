@@ -7,6 +7,8 @@ MIGRATION = Path("supabase/migrations/202608250004_diagnostic_attempts.sql")
 
 def test_diagnostic_migration_is_private_atomic_versioned_and_server_owned():
     sql = MIGRATION.read_text(encoding="utf-8").lower()
+    assert not sql.lstrip().startswith("begin;")
+    assert not sql.rstrip().endswith("commit;")
     assert "^dg_[0-9a-f]{32}$" in sql
     assert "from public.study_records" in sql
     assert "insert into public.study_records" not in sql
