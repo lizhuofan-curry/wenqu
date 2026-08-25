@@ -11,12 +11,18 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import type { Material, Persona, ReviewTask, Session } from "../lib/types";
 import { ReviewComparison } from "./ReviewComparison";
 
 type Stage = "map" | "read" | "quiz" | "retell" | "result";
+
+export type DiagnosticStudyPlan = {
+  sectionId?: string | null;
+  recommendedPath: string[];
+  mode: "recommended" | "beginning";
+};
 
 type StudyFlowProps = {
   material: Material;
@@ -24,6 +30,7 @@ type StudyFlowProps = {
   persona: Persona;
   busy: boolean;
   reviewTask?: ReviewTask;
+  diagnosticPlan?: DiagnosticStudyPlan;
   onEvaluate: (
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
@@ -49,10 +56,36 @@ export function StudyFlow({
   onEvaluate,
   onExit,
   reviewTask,
+  diagnosticPlan,
 }: StudyFlowProps) {
-  const [stage, setStage] = useState<Stage>(session.result ? "result" : reviewTask ? "quiz" : "map");
-  const [sectionIndex, setSectionIndex] = useState(0);
+  const recommendedSections = useMemo(() => {
+    const recommendedIds = new Set(diagnosticPlan?.recommendedPath ?? []);
+    return material.sections.filter((section) => recommendedIds.has(section.id));
+  }, [diagnosticPlan?.recommendedPath, material.sections]);
+  const requestedSectionIndex = diagnosticPlan?.sectionId
+    ? material.sections.findIndex((section) => section.id === diagnosticPlan.sectionId)
+    : -1;
+  const suggestedSectionIndex =
+    requestedSectionIndex >= 0
+      ? requestedSectionIndex
+      : recommendedSections.length > 0
+        ? material.sections.findIndex((section) => section.id === recommendedSections[0].id)
+        : -1;
+  const initialSectionIndex =
+    diagnosticPlan?.mode === "recommended" && suggestedSectionIndex >= 0 ? suggestedSectionIndex : 0;
+  const [stage, setStage] = useState<Stage>(
+    session.result
+      ? "result"
+      : reviewTask
+        ? "quiz"
+        : diagnosticPlan?.mode === "recommended" && suggestedSectionIndex >= 0
+          ? "read"
+          : "map",
+  );
+  const [sectionIndex, setSectionIndex] = useState(initialSectionIndex);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
   const [retelling, setRetelling] = useState("");
   const activeSection = material.sections[sectionIndex];
   const result = session.result;
@@ -63,10 +96,16 @@ export function StudyFlow({
   );
   const retellingReady = retelling.trim().length >= 20;
 
+  const recommendedSection = suggestedSectionIndex >= 0 ? material.sections[suggestedSectionIndex] : null;
+
   const progress = useMemo(() => {
     if (stage === "result") return 100;
     return Math.round(((currentIndex + 1) / activeStageOrder.length) * 100);
   }, [activeStageOrder.length, currentIndex, stage]);
+
+  useEffect(() => {
+    titleRef.current?.focus();
+  }, [session.id]);
 
   useEffect(() => {
     if (session.result) {
@@ -81,6 +120,7 @@ export function StudyFlow({
         <div className="global-error" role="alert">
           这份材料尚未生成完整的讲解与题目，当前不能开始学习或评分。
           <button onClick={onExit}>返回资料库</button>
+
         </div>
       </div>
     );
@@ -92,6 +132,15 @@ export function StudyFlow({
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
+  function openRecommendedSection(sectionId: string) {
+    const nextIndex = material.sections.findIndex((section) => section.id === sectionId);
+    if (nextIndex < 0) return;
+    setSectionIndex(nextIndex);
+    setStage("read");
+    window.scrollTo({ top: 0, behavior: "auto" });
+    window.requestAnimationFrame(() => sectionHeadingRef.current?.focus());
+  }
+
   return (
     <div className="study-flow page-enter">
       <header className="study-header">
@@ -101,7 +150,7 @@ export function StudyFlow({
         </button>
         <div className="study-title">
           <span>{material.difficulty}</span>
-          <h1>{material.title}</h1>
+          <h1 ref={titleRef} tabIndex={-1}>{material.title}</h1>
         </div>
         <div className="study-persona">
           <span className={`persona-avatar ${persona.id}`}>{persona.name.slice(0, 1)}</span>
@@ -138,6 +187,45 @@ export function StudyFlow({
         </div>
       )}
 
+
+      {diagnosticPlan && !reviewTask && (
+        <aside className="diagnostic-study-note" role="note" aria-label="课前诊断路线建议">
+          <div>
+            <strong>
+              {recommendedSection
+                ? `诊断建议：先看“${recommendedSection.title}”`
+                : "诊断建议：从材料地图建立全局认识"}
+            </strong>
+            <p>
+              {diagnosticPlan.mode === "recommended"
+                ? "已按你的选择打开建议段落。路线可随时撤销或改选，不会强制跳过其他章节。"
+                : "你选择了从头开始。建议仍保留且可随时采用或撤销，不会强制跳过任何章节。"}
+            </p>
+            {recommendedSections.length > 0 && (
+              <nav className="diagnostic-study-route" aria-label="建议章节顺序">
+                {recommendedSections.map((section, index) => (
+                  <button
+                    key={section.id}
+                    type="button"
+                    onClick={() => openRecommendedSection(section.id)}
+                    aria-current={activeSection.id === section.id && stage === "read" ? "location" : undefined}
+                  >
+                    {index + 1}. {section.title}
+                  </button>
+                ))}
+              </nav>
+            )}
+          </div>
+          {recommendedSection && (
+            <button
+              type="button"
+              onClick={() => openRecommendedSection(recommendedSection.id)}
+            >
+              打开建议段落
+            </button>
+          )}
+        </aside>
+      )}
       {stage === "map" && (
         <section className="study-stage map-stage">
           <div className="stage-intro">
@@ -189,7 +277,9 @@ export function StudyFlow({
           </div>
           <div className="stage-intro compact">
             <p className="eyebrow">{activeSection.eyebrow}</p>
-            <h2>{activeSection.title}</h2>
+            <h2 ref={sectionHeadingRef} tabIndex={-1}>
+              {activeSection.title}
+            </h2>
             <SourceBadge source={activeSection.source} />
           </div>
           <div className="dual-track">

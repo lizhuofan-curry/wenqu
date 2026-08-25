@@ -86,9 +86,22 @@ Vercel 的 Production、Preview 和 Development 还必须配置至少 32 个 UTF
 
 1. `202608250001_server_owned_study_records.sql`（已生产执行并验收）；
 2. `202608250002_transfer_tasks.sql`（尚未获得生产授权，尚未应用）；
-3. `202608250003_retention_measurements.sql`（尚未获得生产授权，尚未应用）。
+3. `202608250003_retention_measurements.sql`（尚未获得生产授权，尚未应用）；
+4. `202608250004_diagnostic_attempts.sql`（尚未获得生产授权，尚未应用）。
 
-在 002 与 003 分别完成只读预检、明确生产授权、迁移后 ACL/RPC 校验和应用发布前，不得把迁移题或延迟保持率标记为生产可用。真实 D1 保持率还必须等待新服务端可信基线产生并经过至少一个实际复习间隔，不能用即时重复评分代替。
+在 002、003 与 004 分别完成只读预检、明确生产授权、迁移后 ACL/RPC 校验和应用发布前，不得把迁移题、延迟保持率或课前诊断标记为生产可用。真实 D1 保持率还必须等待新服务端可信基线产生并经过至少一个实际复习间隔，不能用即时重复评分代替。
+
+## 开发中：课前诊断私有任务
+
+课前目标级起点建议依赖 `supabase/migrations/202608250004_diagnostic_attempts.sql`。001 已在生产执行并验收；002、003、004 当前均未获得生产迁移授权、均未应用。必须保持 **001 → 002 → 003 → 004** 的严格顺序，不能因为应用代码或 CI 通过就越过前序迁移。
+
+004 的数据库边界如下：
+
+- `diagnostic_attempts` 启用并强制执行 RLS（`FORCE ROW LEVEL SECURITY`），不创建客户端 policy；`public`、`anon`、`authenticated` 对表和三个 RPC 均无权限；
+- `service_role` 对任务表只有 `SELECT`，并且只有它可以执行 `prepare_diagnostic_attempt`、`claim_diagnostic_attempt`、`complete_diagnostic_attempt` 三个固定 `search_path` 的 RPC；写入、状态领取和完成都只能经这些服务端函数发生；
+- 首次课前基线以 `(user_id, material_id, material_revision, diagnostic_version)` 唯一。不同 client request 仍返回同一首次基线；确定性评分中断后只允许完全相同的提交恢复，不同提交不得覆盖；
+- 诊断题私有 contract、submission 和结果保存在 `diagnostic_attempts`，诊断流程不插入、更新或删除 `study_records`，也不把课前证据计入正式学习档案。
+
 
 ## 验收
 

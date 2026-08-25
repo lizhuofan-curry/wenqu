@@ -7,12 +7,13 @@
     "build": "pnpm --dir apps/web run build",
     "typecheck": "pnpm --dir apps/web run typecheck",
     "test:web:retention": "node --experimental-strip-types apps/web/src/lib/retention.test.mjs",
+    "test:web:diagnostic": "node --experimental-strip-types apps/web/src/lib/diagnostic.test.mjs",
     "test:api": "node scripts/py.mjs -m pytest services/api/tests api/tests --basetemp tmp/pytest-api -p no:cacheprovider -q",
     "check:api": "node scripts/py.mjs -m ruff check services/api",
-    "check:vercel-api": "node scripts/py.mjs -m ruff check api/index.py --select E9,F && node scripts/py.mjs -m ruff check api/transfer_core.py api/transfer_routes.py api/tests/test_transfer_core.py api/tests/test_transfer_routes_state.py api/tests/test_retention_security.py && node scripts/py.mjs -m py_compile api/index.py api/transfer_core.py api/transfer_routes.py",
+    "check:vercel-api": "node scripts/py.mjs -m ruff check api/index.py --select E9,F && node scripts/py.mjs -m ruff check api/transfer_core.py api/transfer_routes.py api/diagnostic_core.py api/diagnostic_routes.py api/tests/test_transfer_core.py api/tests/test_transfer_routes_state.py api/tests/test_retention_security.py api/tests/test_diagnostic_core.py api/tests/test_diagnostic_routes.py api/tests/test_diagnostic_migration.py && node scripts/py.mjs -m py_compile api/index.py api/transfer_core.py api/transfer_routes.py api/diagnostic_core.py api/diagnostic_routes.py",
     "db:migrate": "node scripts/py.mjs services/api/scripts/apply_supabase_migrations.py",
     "db:check": "node scripts/py.mjs services/api/scripts/check_supabase.py",
-    "check": "pnpm typecheck && pnpm build && pnpm test:web:retention && pnpm check:api && pnpm check:vercel-api && pnpm test:api"
+    "check": "pnpm typecheck && pnpm build && pnpm test:web:retention && pnpm test:web:diagnostic && pnpm check:api && pnpm check:vercel-api && pnpm test:api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

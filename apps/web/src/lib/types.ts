@@ -198,3 +198,44 @@ export type TransferAttemptResult = {
   cloud_saved: boolean;
   cloud_retry_token?: string | null;
 };
+
+export type DiagnosticObjectiveStatus =
+  | "ready"
+  | "developing"
+  | "needs_foundation"
+  | "evidence_insufficient";
+
+export type DiagnosticQuestion = Pick<Question, "id" | "kind" | "prompt">;
+export type DiagnosticConfidence = "low" | "medium" | "high";
+
+export type DiagnosticAnswer = {
+  question_id: string;
+  response: string;
+  confidence: DiagnosticConfidence;
+};
+
+
+export type DiagnosticObjectiveResult = {
+  objective_id: string;
+  label: string;
+  status: DiagnosticObjectiveStatus;
+  summary?: string | null;
+};
+
+export type DiagnosticResult = {
+  route_type: "full" | "focused" | "quick_review";
+  route_reason: string;
+  objective_results: DiagnosticObjectiveResult[];
+  recommended_section_id?: string | null;
+  recommended_path: string[];
+  summary?: string | null;
+};
+
+export type DiagnosticAttempt = {
+  id: string;
+  status: "ready" | "evaluating" | "completed";
+  material_id: string;
+  material_title?: string;
+  questions: DiagnosticQuestion[];
+  result?: DiagnosticResult;
+};

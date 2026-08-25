@@ -1500,3 +1500,337 @@
   }
 
 }
+
+.diagnostic-entry-actions,
+.library-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.diagnostic-entry-actions > button,
+.library-actions > button {
+  min-height: 44px;
+}
+
+.diagnostic-entry-actions.compact {
+  margin-top: 14px;
+}
+
+.diagnostic-flow {
+  width: min(1100px, 100%);
+  margin: 0 auto;
+  padding: 26px clamp(16px, 4vw, 44px) 54px;
+}
+
+.diagnostic-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 22px;
+  margin-bottom: 22px;
+}
+
+.diagnostic-header h1 {
+  margin: 6px 0 8px;
+}
+
+.diagnostic-header p,
+.diagnostic-question p,
+.diagnostic-result-heading p,
+.diagnostic-study-note p {
+  color: var(--ink-soft);
+  line-height: 1.7;
+}
+
+.diagnostic-sheet,
+.diagnostic-result {
+  padding: clamp(20px, 4vw, 38px);
+  border: 1px solid var(--line);
+  background: var(--card);
+  box-shadow: var(--shadow-soft);
+}
+
+.diagnostic-intro,
+.diagnostic-study-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.diagnostic-intro h2,
+.diagnostic-result-heading h2 {
+  margin: 0 0 8px;
+}
+
+.diagnostic-question-list {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.diagnostic-question {
+  position: relative;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 72%, var(--card));
+}
+
+.diagnostic-question-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  color: var(--indigo);
+  font-family: var(--font-mono);
+}
+
+.diagnostic-question label {
+  display: block;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.diagnostic-question textarea {
+  width: 100%;
+  min-height: 132px;
+  margin-top: 10px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  resize: vertical;
+}
+
+.diagnostic-question textarea:focus-visible,
+.diagnostic-flow button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--indigo) 55%, transparent);
+  outline-offset: 3px;
+}
+
+.diagnostic-count {
+  display: block;
+  margin-top: 6px;
+  color: var(--ink-soft);
+  text-align: right;
+}
+
+.diagnostic-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 24px;
+}
+
+.diagnostic-actions button,
+.diagnostic-study-note button {
+  min-height: 44px;
+}
+
+.diagnostic-alert,
+.diagnostic-status {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  border-left: 3px solid var(--gold);
+  background: color-mix(in srgb, var(--gold) 10%, var(--card));
+}
+
+.diagnostic-objectives {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 24px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnostic-objectives li,
+.diagnostic-route {
+  padding: 18px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--paper) 72%, var(--card));
+}
+
+.diagnostic-objectives li > span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--indigo);
+  font-size: 11px;
+}
+
+.diagnostic-route ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  margin-bottom: 0;
+}
+
+.diagnostic-study-note {
+  justify-content: space-between;
+  margin: 0 auto 18px;
+  padding: 16px 18px;
+  border-left: 3px solid var(--indigo);
+  background: color-mix(in srgb, var(--indigo) 7%, var(--card));
+}
+
+.diagnostic-study-route {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.diagnostic-study-route button {
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  text-align: left;
+}
+
+.diagnostic-study-route button[aria-current="location"] {
+  border-color: var(--indigo);
+  color: var(--indigo);
+}
+
+
+@media (max-width: 560px) {
+  .diagnostic-flow {
+    padding-inline: 12px;
+  }
+
+  .diagnostic-header,
+  .diagnostic-objectives {
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostic-entry-actions,
+  .library-actions,
+  .diagnostic-actions,
+  .diagnostic-study-note {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .diagnostic-entry-actions > button,
+  .library-actions > button,
+  .diagnostic-actions > button,
+  .diagnostic-study-note > button {
+    width: 100%;
+  }
+
+  .diagnostic-study-route,
+  .diagnostic-study-route > button {
+    width: 100%;
+  }
+
+  .diagnostic-sheet,
+  .diagnostic-result,
+  .diagnostic-question {
+    padding: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .diagnostic-flow *,
+  .diagnostic-study-note * {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.diagnostic-pending,
+.diagnostic-route-summary {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.diagnostic-pending > div,
+.diagnostic-route-summary > p {
+  flex: 1;
+}
+
+.diagnostic-pending h2,
+.diagnostic-pending p,
+.diagnostic-route-summary p {
+  margin: 0;
+}
+
+.diagnostic-route-summary {
+  margin-top: 20px;
+}
+
+.diagnostic-route-summary > span {
+  padding: 6px 10px;
+  background: color-mix(in srgb, var(--indigo) 10%, var(--paper));
+  color: var(--indigo);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.diagnostic-confidence {
+  margin-top: 16px;
+  padding: 0;
+  border: 0;
+}
+
+.diagnostic-confidence legend {
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.diagnostic-confidence > div {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.diagnostic-confidence label {
+  display: flex;
+  min-height: 52px;
+  padding: 8px 10px;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.diagnostic-confidence label:has(input:checked) {
+  border-color: var(--indigo);
+  background: color-mix(in srgb, var(--indigo) 8%, var(--paper));
+}
+
+.diagnostic-confidence label > span {
+  display: grid;
+  gap: 2px;
+}
+
+.diagnostic-confidence small {
+  color: var(--ink-soft);
+  font-size: 9px;
+}
+
+@media (max-width: 560px) {
+  .diagnostic-pending,
+  .diagnostic-route-summary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .diagnostic-pending > button {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .diagnostic-confidence > div {
+    grid-template-columns: 1fr;
+  }
+}

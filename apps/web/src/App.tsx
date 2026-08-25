@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArchiveView } from "./components/ArchiveView";
 import { AuthModal } from "./components/AuthModal";
 import { Dashboard } from "./components/Dashboard";
+import { DiagnosticFlow } from "./components/DiagnosticFlow";
 import { InsightsView } from "./components/InsightsView";
 import { MaterialsView } from "./components/MaterialsView";
 import { MisconceptionsView } from "./components/MisconceptionsView";
 import { Shell } from "./components/Shell";
 import type { View } from "./components/Shell";
-import { StudyFlow } from "./components/StudyFlow";
+import { StudyFlow, type DiagnosticStudyPlan } from "./components/StudyFlow";
 import { TransferFlow } from "./components/TransferFlow";
-import { api, isDemo, isDegraded } from "./lib/api";
+import { ApiError, api, isDemo, isDegraded } from "./lib/api";
 import {
   clearProfileAndActiveSession,
   loadLocalArchive,
@@ -35,8 +36,15 @@ import {
   logoutCloudAccount,
   watchCloudAuth,
 } from "./lib/cloud";
+import {
+  readDiagnosticAttemptId,
+  resolveDiagnosticSection,
+  writeDiagnosticAttemptId,
+} from "./lib/diagnostic";
 import type {
   ArchiveItem,
+  DiagnosticAttempt,
+  DiagnosticAnswer,
   Material,
   MaterialSummary,
   Persona,
@@ -73,6 +81,9 @@ function App() {
   const [selectedPersona, setSelectedPersona] = useState("huangfeng");
   const [material, setMaterial] = useState<Material | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [diagnosticAttempt, setDiagnosticAttempt] = useState<DiagnosticAttempt | null>(null);
+  const [diagnosticPlan, setDiagnosticPlan] = useState<DiagnosticStudyPlan | null>(null);
+  const [diagnosticError, setDiagnosticError] = useState("");
   const [archive, setArchive] = useState<ArchiveItem[]>([]);
   const [activeReviewTask, setActiveReviewTask] = useState<ReviewTask | null>(null);
   const [activeTransferTask, setActiveTransferTask] = useState<TransferTask | null>(null);
@@ -154,6 +165,9 @@ function App() {
         ++authEpoch.current;
         setMaterial(null);
         setSession(null);
+        setDiagnosticAttempt(null);
+        setDiagnosticPlan(null);
+        setDiagnosticError("");
         setMaterials([]);
         setActiveReviewTask(null);
         setActiveTransferTask(null);
@@ -168,7 +182,9 @@ function App() {
         setLocalOnlySyncRecords([]);
         setSyncingRecordId(null);
         setError("");
-        setView((current) => current === "study" ? "home" : current);
+        setView((current) =>
+          current === "study" || current === "diagnostic" ? "home" : current,
+        );
       }
       const epoch = authEpoch.current;
       if (profile) {
@@ -232,6 +248,9 @@ function App() {
         setMaterials([]);
         setMaterial(null);
         setSession(null);
+        setDiagnosticAttempt(null);
+        setDiagnosticPlan(null);
+        setDiagnosticError("");
         setView("home");
         setActiveReviewTask(null);
         setActiveTransferTask(null);
@@ -265,6 +284,9 @@ function App() {
       ++authEpoch.current;
       setMaterial(null);
       setSession(null);
+      setDiagnosticAttempt(null);
+      setDiagnosticPlan(null);
+      setDiagnosticError("");
       setMaterials([]);
       setActiveReviewTask(null);
       setActiveTransferTask(null);
@@ -279,7 +301,9 @@ function App() {
       setLocalOnlySyncRecords([]);
       setSyncingRecordId(null);
       setError("");
-      setView((current) => current === "study" ? "home" : current);
+      setView((current) =>
+        current === "study" || current === "diagnostic" ? "home" : current,
+      );
     }
     const epoch = authEpoch.current;
     saveProfile(profile);
@@ -317,6 +341,7 @@ function App() {
     materialId: string,
     preloaded?: Material,
     reviewTask?: ReviewTask,
+    studyPlan?: DiagnosticStudyPlan,
   ) {
     const epoch = authEpoch.current;
     setBusy(true);
@@ -340,6 +365,9 @@ function App() {
       if (authEpoch.current !== epoch) return;
       setMaterial(nextMaterial);
       setSession(nextSession);
+      setDiagnosticPlan(studyPlan || null);
+      setDiagnosticAttempt(null);
+      setDiagnosticError("");
       setActiveReviewTask(reviewTask || null);
       setActiveTransferTask(null);
       setTransferResult(undefined);
@@ -354,6 +382,205 @@ function App() {
       }
     }
   }
+  function showDiagnosticAttempt(
+    attempt: DiagnosticAttempt,
+    fallbackTitle: string,
+  ) {
+    setDiagnosticAttempt({
+      ...attempt,
+      material_title: attempt.material_title || fallbackTitle,
+    });
+    setMaterial(null);
+    setSession(null);
+    setDiagnosticPlan(null);
+    setActiveReviewTask(null);
+    setActiveTransferTask(null);
+    setTransferResult(undefined);
+    setView("diagnostic");
+  }
+
+  async function startDiagnostic(materialId: string) {
+    const ownerUserId = activeCloudUserId.current;
+    if (materialId !== "senet-cvpr-2018") return;
+    if (!ownerUserId) {
+      setAuthMode("login");
+      setAuthOpen(true);
+      return;
+    }
+    const epoch = authEpoch.current;
+    const fallbackTitle =
+      materials.find((item) => item.id === materialId)?.title ||
+      "SENet 课前诊断";
+    setBusy(true);
+    setError("");
+    setDiagnosticError("");
+    try {
+      let attempt: DiagnosticAttempt | null = null;
+      const storedAttemptId = readDiagnosticAttemptId(
+        localStorage,
+        ownerUserId,
+        materialId,
+      );
+      if (storedAttemptId) {
+        try {
+          attempt = await api.diagnostic(storedAttemptId);
+        } catch (reason) {
+          if (!(reason instanceof ApiError) || reason.status !== 404) throw reason;
+        }
+      }
+      if (!attempt) {
+        attempt = await api.prepareDiagnostic(
+          materialId,
+          ownerUserId,
+          globalThis.crypto.randomUUID(),
+        );
+      }
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) return;
+      writeDiagnosticAttemptId(localStorage, ownerUserId, materialId, attempt.id);
+      showDiagnosticAttempt(attempt, fallbackTitle);
+    } catch (reason) {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        setError(reason instanceof Error ? reason.message : "课前诊断准备失败。");
+      }
+    } finally {
+      if (authEpoch.current === epoch) setBusy(false);
+    }
+  }
+
+  async function refreshDiagnostic() {
+    const attempt = diagnosticAttempt;
+    const ownerUserId = activeCloudUserId.current;
+    if (!attempt || !ownerUserId) return;
+    const epoch = authEpoch.current;
+    setBusy(true);
+    setDiagnosticError("");
+    try {
+      const recovered = await api.diagnostic(attempt.id);
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) return;
+      writeDiagnosticAttemptId(
+        localStorage,
+        ownerUserId,
+        attempt.material_id,
+        recovered.id,
+      );
+      showDiagnosticAttempt(
+        recovered,
+        attempt.material_title || "SENet 课前诊断",
+      );
+      if (recovered.status === "evaluating") {
+        setDiagnosticError("评分仍在确认中；系统没有重复提交，请稍后再次读取状态。");
+      } else if (recovered.status !== "completed") {
+        setDiagnosticError("任务尚未完成，可以保留当前答案后重新提交。");
+      }
+    } catch (reason) {
+      if (
+        authEpoch.current === epoch &&
+        activeCloudUserId.current === ownerUserId
+      ) {
+        setDiagnosticError(
+          reason instanceof Error ? reason.message : "诊断状态读取失败。",
+        );
+      }
+    } finally {
+      if (authEpoch.current === epoch) setBusy(false);
+    }
+  }
+
+  async function evaluateDiagnostic(answers: DiagnosticAnswer[]) {
+    const attempt = diagnosticAttempt;
+    const ownerUserId = activeCloudUserId.current;
+    if (!attempt || !ownerUserId) return;
+    if (attempt.status === "evaluating") {
+      await refreshDiagnostic();
+      return;
+    }
+    const epoch = authEpoch.current;
+    setBusy(true);
+    setDiagnosticError("");
+    try {
+      const completed = await api.evaluateDiagnostic(
+        attempt.id,
+        ownerUserId,
+        answers,
+      );
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) return;
+      if (completed.status !== "completed" || !completed.result) {
+        throw new Error("诊断结果尚未完整返回，请读取当前任务状态。");
+      }
+      writeDiagnosticAttemptId(
+        localStorage,
+        ownerUserId,
+        attempt.material_id,
+        completed.id,
+      );
+      showDiagnosticAttempt(
+        completed,
+        attempt.material_title || "SENet 课前诊断",
+      );
+    } catch (reason) {
+      if (
+        authEpoch.current !== epoch ||
+        activeCloudUserId.current !== ownerUserId
+      ) return;
+      const originalMessage =
+        reason instanceof Error ? reason.message : "课前诊断评分失败。";
+      try {
+        const recovered = await api.diagnostic(attempt.id);
+        if (
+          authEpoch.current !== epoch ||
+          activeCloudUserId.current !== ownerUserId
+        ) return;
+        writeDiagnosticAttemptId(
+          localStorage,
+          ownerUserId,
+          attempt.material_id,
+          recovered.id,
+        );
+        showDiagnosticAttempt(
+          recovered,
+          attempt.material_title || "SENet 课前诊断",
+        );
+        if (recovered.status === "completed" && recovered.result) {
+          setDiagnosticError("");
+        } else if (recovered.status === "evaluating") {
+          setDiagnosticError("评分请求已接收，结果仍在确认；请使用“读取状态”，不要重复提交。");
+        } else {
+          setDiagnosticError(originalMessage);
+        }
+      } catch {
+        setDiagnosticError(originalMessage);
+      }
+    } finally {
+      if (authEpoch.current === epoch) setBusy(false);
+    }
+  }
+
+  async function startStudyFromDiagnostic(
+    mode: DiagnosticStudyPlan["mode"],
+  ) {
+    const attempt = diagnosticAttempt;
+    const result = attempt?.result;
+    if (!attempt || !result) return;
+    const recommendedPath = result.recommended_path ?? [];
+    await startStudy(attempt.material_id, undefined, undefined, {
+      sectionId: mode === "recommended" ? resolveDiagnosticSection(result) : undefined,
+      recommendedPath,
+      mode,
+    });
+  }
+
   function startReview(task: ReviewTask) {
     if (!isReviewDue(task)) return;
     void startStudy(task.material_id, undefined, task);
@@ -931,6 +1158,9 @@ function App() {
             setMaterial(null);
             setSession(null);
             setActiveReviewTask(null);
+            setDiagnosticAttempt(null);
+            setDiagnosticPlan(null);
+            setDiagnosticError("");
             setActiveTransferTask(null);
             setTransferResult(undefined);
             transferRequestInFlight.current = false;
@@ -959,6 +1189,8 @@ function App() {
           selectedPersona={selectedPersona}
           onSelectPersona={setSelectedPersona}
           onStart={(id) => void startStudy(id)}
+          onDiagnose={(id) => void startDiagnostic(id)}
+          canDiagnose={Boolean(activeCloudUserId.current)}
           onUpload={(file) => void upload(file)}
           onDelete={(id) => void deleteMaterial(id)}
           busy={busy}
@@ -987,6 +1219,8 @@ function App() {
           deletingId={deletingId}
           onStart={(id) => void startStudy(id)}
           onUpload={(file) => void upload(file)}
+          onDiagnose={(id) => void startDiagnostic(id)}
+          canDiagnose={Boolean(activeCloudUserId.current)}
           onDelete={(id) => void deleteMaterial(id)}
           onRegenerate={(id) => {
             const epoch = authEpoch.current;
@@ -1021,6 +1255,24 @@ function App() {
           }}
         />
       )}
+      {view === "diagnostic" && diagnosticAttempt && (
+        <DiagnosticFlow
+          key={diagnosticAttempt.id}
+          attempt={diagnosticAttempt}
+          busy={busy}
+          error={diagnosticError}
+          onEvaluate={(answers) => void evaluateDiagnostic(answers)}
+          onRefresh={() => void refreshDiagnostic()}
+          onAcceptRecommendation={() => void startStudyFromDiagnostic("recommended")}
+          onStartFromBeginning={() => void startStudyFromDiagnostic("beginning")}
+          onExit={() => {
+            setDiagnosticAttempt(null);
+            setDiagnosticPlan(null);
+            setDiagnosticError("");
+            void navigate("home");
+          }}
+        />
+      )}
       {view === "study" && activeTransferTask && (
         <TransferFlow
           key={activeTransferTask.id}
@@ -1044,6 +1296,7 @@ function App() {
           persona={persona}
           busy={busy}
           reviewTask={activeReviewTask || undefined}
+          diagnosticPlan={diagnosticPlan || undefined}
           onEvaluate={(answers, retelling) => void evaluate(answers, retelling)}
           onExit={() => {
             setActiveReviewTask(null);

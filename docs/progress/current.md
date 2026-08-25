@@ -3,6 +3,27 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
+## 2026-08-25｜课前诊断与个性化起点完成本地实现
+
+- 内置 SENet 新增独立、版本化的三道课前诊断题，不复用正式学习后的 `q1/q2/q3`；准备接口只返回题号、类型和题面，不向浏览器发送答案、证据点、来源定位或隐藏评分规则。上传材料首版明确返回 422，不调用 AI。
+- 服务端按三个学习目标分别生成 `ready`、`developing`、`needs_foundation`、`evidence_insufficient` 四态证据；空白、过短、无关和照抄不伪装成错误，明确冲突优先于关键词命中。每题 `confidence=low|medium|high` 必填并随首次提交保存，但不参与评分。
+- 诊断结果只公开目标状态、非答案摘要和 `full / focused / quick_review` 路线；不公开分数、标准答案、检查词、rubric 或原文定位。路线仅表示建议起点，不宣称掌握，可随时撤销、改选或从头开始。
+- 新增私有迁移 `202608250004_diagnostic_attempts.sql`：任务表 Force RLS、无客户端 policy，只有 service role 可读并执行固定 `search_path` 的 prepare/claim/complete RPC；首次基线按账号、材料、材料 revision 和诊断版本唯一。确定性评分在进程中断后允许完全相同的提交恢复完成，不同提交不能覆盖首次基线。
+- 隐藏 contract 同时绑定独立 rubric fingerprint 与实际可执行评分器源码 fingerprint；题面、隐藏规则、材料 revision 或评分实现变化时失败闭合，不能跨版本复用结果。诊断不会写入 `study_records`。
+- 前端支持登录后准备、完成结果恢复、账号切换隔离和 `evaluating` 状态读取；建议路径只保留当前材料真实章节并去重，按顺序提供 44px 可点击导航，点击后聚焦章节 `h2`，手机端按钮满宽。
+- 当前验证证据：诊断后端专项 **34 passed**，完整 API **96 passed**，诊断 UI **9 assertions passed**；TypeScript、Vite Production build（**1807 modules**）、两套 Ruff 与 Python 编译均通过。最终完整 `pnpm check` 退出码为 **0**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告；有效性终审通过。
+- 当前改动仍在本地工作树：**尚未提交、尚未创建 PR、尚未运行 GitHub CI**。`202608250004_diagnostic_attempts.sql` **尚未获得生产迁移授权，也未应用到 Production**；不得把课前诊断写成已上线能力。
+
+### 当前阶段
+
+**阶段：课前诊断与个性化起点已完成本地实现、有效性终审和最终完整门禁；尚未提交、尚未创建 PR、尚未运行 GitHub CI，004 仍未获生产授权或应用到 Production。**
+
+### 当前最高优先级
+
+先运行当前完整工作树的最终 `pnpm check` 与 `git diff --check`，完成独立终审后再提交、推送并创建 PR；只有 GitHub API/Web CI 全部通过后才进入合并与生产授权讨论。数据库生产顺序必须保持 **002 → 003 → 004**：先分别完成迁移题与延迟保持率的数据库/应用发布闭环，再单独取得 004 授权、应用并验证私有表/RPC ACL，最后发布课前诊断并做真实登录账号恢复与重复提交验收。
+
+不得因为本地测试通过就跳过 PR/CI、提前执行 004，或从包含未授权堆叠改动的脏工作树发布 Production。
+
 ## 2026-08-25｜云同步恢复中心已上线；延迟保持率完成主体实现
 
 - 生产数据库已只执行并登记 202608250001_server_owned_study_records.sql：迁移前后 study_records 均为 **11 条**，无记录删除；最终 authenticated 完整表权限仅 SELECT，service role 仅 SELECT/INSERT，RLS 只保留 owner SELECT policy。
