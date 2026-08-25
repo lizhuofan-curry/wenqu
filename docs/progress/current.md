@@ -3,47 +3,52 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
-## 2026-08-25｜本地证据笔记卡 MVP 完成本地实现
+## 2026-08-26｜证据笔记合入生产安全链
 
 - 新增 `apps/web/src/lib/evidenceNotes.ts` 与专项测试：笔记采用 localStorage schema v1，按稳定登录用户 ID 或 `anonymous` 命名空间隔离；匿名笔记不会在登录后自动认领。正文、账号卡片数和来源摘录均有限制，损坏或旧 schema 安全降级。
 - 新增 `EvidenceNoteDialog.tsx` 与 `EvidenceNotesPanel.tsx`，并接入 `App.tsx`、`StudyFlow.tsx`、`MaterialsView.tsx`、`InsightsView.tsx` 和 `pages.css`。材料地图、双轨阅读与普通学习结果页可创建；闭卷测验、复述和延迟复习不提供入口。
 - 卡片只允许“我的理解 / 待核对”，来源仅为创建时未认证定位快照，不提供“论文事实”状态，也不进入 evaluate、archive、`study_records`、掌握度、保持率或迁移评分载荷。
 - 集中面板支持搜索、按材料筛选、编辑、删除、复制 Markdown、导出 JSON/Markdown；材料被删除后笔记不级联删除。“原材料已删除”和“原位置可能已变化”采用独立状态与文案，界面明确提示仅存本浏览器、不云同步。
 - 安全复审发现本地恶意对象的未知根字段可能随对象展开进入导出，现已改为读取与 JSON 导出均逐字段白名单重建；`score`、`answer_guide`、`token` 和 `source.hidden_rubric` 不会进入内存或导出。
-- 最终完整 `pnpm check` 退出码为 **0**：TypeScript、Vite Production build（**1810 modules**）、保持率 8 个场景、诊断 35 项断言、证据笔记 50 项断言、两套 Ruff/Python 编译与完整 API **96 passed**；仅保留 1 条既有 Starlette/httpx 第三方弃用警告。`git diff --check` 无错误，仅有既有 `package.json` CRLF 提示。
+- 最终堆叠头完整 `pnpm check` 退出码为 **0**：TypeScript、Vite Production build（**1810 modules**）、保持率 8 个场景、诊断 35 项断言、证据笔记 50 项断言、两套 Ruff/Python 编译与完整 API **97 passed**；仅保留 1 条既有 Starlette/httpx 第三方弃用警告。
 - Playwright + Edge headless 真实走通桌面与 390px：创建、编辑、搜索、筛选、Markdown/JSON 导出、删除、闭卷入口隔离、Tab/Shift+Tab 焦点循环、Esc 回焦均通过；三处窄屏横向溢出为 0。浏览器发现并修复 `map:* / result:*` 合法位置被误报陈旧，以及移动端导航图标缺少可访问名称。截图保存在本地 `tmp/evidence-browser-*.png`，因 Windows helper 错误未做像素级人工目视，不把 DOM/截图生成冒充视觉审稿。
 - 安全终审与学习有效性终审均无阻塞：账号/匿名命名空间、导出白名单、闭卷阶段和正式评分/档案隔离通过；学习契约已按实际 `schema_version/id/owner_id/content/source` 与 JSON 导出字段回写，结构化 PDF 页、公式和 Figure 定位仍明确为未来增强。
-- 功能提交 `999be3d` 已推送到 `codex/evidence-note-cards`；stacked PR [#38](https://github.com/lizhuofan-curry/wenqu/pull/38) 以 PR #37 的 `codex/adaptive-route` 为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR #38 当前 **OPEN、未合并、未发布 Production**；本轮没有新增数据库迁移，也没有把浏览器笔记写成跨设备能力。
+- 已以普通 merge 将通过 GitHub CI 的 PR #37 提交 `58bb685` 合入 PR #38 本地历史；生产迁移安全修正与永久检查器已经传播到最终堆叠头。证据笔记本身仍不新增数据库迁移，也不具备跨设备同步。
+- PR #38 当前 **OPEN、未合并、未发布 Production**，等待提交推送后的新 GitHub API/Web CI。
 
 ### 当前阶段
 
-**阶段：本地证据笔记卡 MVP 已完成实现、双路终审、完整门禁、真实浏览器验收、提交推送、stacked PR #38 与 GitHub API/Web CI；PR 仍 OPEN，未合并或发布。**
+**阶段：最终堆叠 PR #38 已在本地合入 #37 的生产安全历史并通过完整门禁；等待提交推送与新 GitHub CI，#34–#38 均尚未合并或发布。**
 
 ### 当前最高优先级
 
-保持 PR #38 为 stacked OPEN 状态，不越过 PR #37 提前合并或部署；本地证据笔记不需要数据库迁移。按既定路线继续下一项“语音复述”，先定义无录音泄露、明确同意、转写与正式评分隔离的最小契约。
+提交并推送 PR #38，等待新 CI；随后严格按精确快照执行 002→003→004 生产迁移，并按 #34→#38 顺序合并、部署和验收。完成本次发布及 README 更新前不启动语音复述。
+
+最后更新：2026-08-26
 
 
-## 2026-08-25｜自适应学习路线 MVP 完成 GitHub 验证
+## 2026-08-26｜自适应路线合入生产安全链
 
 - StudyFlow 严格保留后端 `recommendedPath` 输入顺序，并按当前材料章节过滤无效 ID、自然去重；学习者可以显式停止建议、恢复建议或手动浏览全部章节，所有章节切换都会聚焦当前章节标题。
 - 建议路线只显示“建议位置 x/N”，不把当前位置冒充完成度。流程条从材料地图的真实 0% 开始，只把已经离开的步骤标为完成；未来步骤禁用，当前步骤使用 `aria-current="step"`。
 - 每节提供“已理解 / 仍需复核”的显式自我标记；“仍需复核”进入当前学习会话内的去重清单。进入测验前若清单非空，会插入可逐项查看和移除的复核检查点，清单清空后才能开始测验。
 - 测验开始后路线和复核状态冻结。路线状态、理解标记与复核清单不写 `localStorage`、`study_records` 或正式评分载荷，不使用 confidence、停留时间或关键词推断理解，也没有新增 `005` 数据库迁移。
 - 移动端路线、理解按钮和复核操作保持至少 44px 触控高度，窄屏按钮满宽；键盘切换路线、章节和复核项后均有明确焦点目标。
-- 当前本地验证：诊断 UI **35 assertions passed**，完整 `pnpm check` 退出码为 **0**；TypeScript、Vite Production build（**1807 modules**）、保持率 8 组场景、两套 Ruff 与 Python 编译均通过，完整 API **96 passed**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告。正式评分载荷、档案写入与 reviewTask 路径的隔离终审通过；`git diff --check` 无错误，仅有既有 CRLF 提示。
-- 功能提交 `52cd9ec` 已推送到 `codex/adaptive-route`；stacked PR [#37](https://github.com/lizhuofan-curry/wenqu/pull/37) 以 PR #36 的 `codex/prestudy-diagnostic` 为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR #37 当前 **OPEN、未合并**，未发布 Production；本功能没有 `005`，也不授权或执行任何生产迁移。
+- 已以普通 merge 将通过 GitHub CI 的 PR #36 提交 `5254f0a` 合入 PR #37 本地历史；自适应路线没有新增数据库迁移，002–004 仍保持独立发布闸门。
+- 合并后完整 `pnpm check` 通过：诊断 UI **35 assertions passed**、保持率 **8 scenarios passed**、完整 API **97 passed**、Vite Production build **1807 modules**，两套 Ruff、Python 编译与 TypeScript 均通过，仅保留 1 条既有第三方弃用警告。PR #37 当前仍 **OPEN、未合并、未发布**，等待推送后的新 GitHub CI。
 
 ### 当前阶段
 
-**阶段：自适应学习路线 MVP 已完成本地实现、隔离终审、完整门禁、提交推送、stacked PR #37 与 GitHub API/Web CI；PR #37 仍 OPEN、未合并，且没有 005 或 Production 发布。**
+**阶段：PR #37 已在本地合入 #36 的生产安全历史并通过完整门禁；等待提交推送与新 GitHub CI，尚未合并或发布 Production。**
 
 ### 当前最高优先级
 
-保持 PR #37 为 stacked OPEN 状态，不越过 PR #36 提前合并或部署。继续遵守 002 → 003 → 004 的生产迁移与应用发布顺序；自适应路线本身不新增生产迁移。
+提交并推送 PR #37，等待新 CI；随后将同一已验证历史普通合入 PR #38。继续遵守 002 → 003 → 004 的独立生产迁移顺序；自适应路线本身不新增迁移。
+
+最后更新：2026-08-26
 
 
-## 2026-08-25｜课前诊断与个性化起点完成本地实现
+## 2026-08-26｜课前诊断生产发布安全收口
 
 - 内置 SENet 新增独立、版本化的三道课前诊断题，不复用正式学习后的 `q1/q2/q3`；准备接口只返回题号、类型和题面，不向浏览器发送答案、证据点、来源定位或隐藏评分规则。上传材料首版明确返回 422，不调用 AI。
 - 服务端按三个学习目标分别生成 `ready`、`developing`、`needs_foundation`、`evidence_insufficient` 四态证据；空白、过短、无关和照抄不伪装成错误，明确冲突优先于关键词命中。每题 `confidence=low|medium|high` 必填并随首次提交保存，但不参与评分。
@@ -51,18 +56,22 @@
 - 新增私有迁移 `202608250004_diagnostic_attempts.sql`：任务表 Force RLS、无客户端 policy，只有 service role 可读并执行固定 `search_path` 的 prepare/claim/complete RPC；首次基线按账号、材料、材料 revision 和诊断版本唯一。确定性评分在进程中断后允许完全相同的提交恢复完成，不同提交不能覆盖首次基线。
 - 隐藏 contract 同时绑定独立 rubric fingerprint 与实际可执行评分器源码 fingerprint；题面、隐藏规则、材料 revision 或评分实现变化时失败闭合，不能跨版本复用结果。诊断不会写入 `study_records`。
 - 前端支持登录后准备、完成结果恢复、账号切换隔离和 `evaluating` 状态读取；建议路径只保留当前材料真实章节并去重，按顺序提供 44px 可点击导航，点击后聚焦章节 `h2`，手机端按钮满宽。
-- 当前验证证据：诊断后端专项 **34 passed**，完整 API **96 passed**，诊断 UI **9 assertions passed**；TypeScript、Vite Production build（**1807 modules**）、两套 Ruff 与 Python 编译均通过。最终完整 `pnpm check` 退出码为 **0**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告；有效性终审通过。
-- 功能提交 `8a2f9cd` 已推送到 `codex/prestudy-diagnostic`；stacked PR [#36](https://github.com/lizhuofan-curry/wenqu/pull/36) 以 PR #35 的 `codex/delayed-retention` 为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR #36 当前 **OPEN、未合并**；`202608250004_diagnostic_attempts.sql` **尚未获得生产迁移授权，也未应用到 Production**，不得把课前诊断写成已上线能力。
+- 已把 PR #35 安全提交 `4f23d0b` 以普通 merge 合入 PR #36 本地历史；复盘文档冲突完整保留两侧内容并顺延编号，没有丢弃任何代码或经验记录。
+- `202608250004_diagnostic_attempts.sql` 已删除内层 `BEGIN/COMMIT`，由迁移 runner 独占事务；生产检查器新增迁移账本 SHA-256、诊断表 Force RLS/零策略、service role 只读表权限、全部约束/索引以及 prepare/claim/complete 三个 RPC 的空 search_path、security definer、service-role-only execute 与关键行为验证。
+- 当前验证证据：诊断后端专项 **34 passed**，完整 API **97 passed**，保持率 **8 scenarios passed**，诊断 UI **9 assertions passed**；TypeScript、Vite Production build（**1807 modules**）、两套 Ruff 与 Python 编译均通过。最终完整 `pnpm check` 退出码为 **0**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告。
+- PR #36 当前仍 **OPEN、未合并**；项目所有者已明确授权 002→003→004 生产迁移，但截至本记录三项迁移均尚未执行，课前诊断仍不能写成已上线能力。
 
 ### 当前阶段
 
-**阶段：课前诊断与个性化起点已完成本地实现、有效性终审、最终完整门禁、提交推送、stacked PR #36 与 GitHub API/Web CI；PR #36 仍 OPEN、未合并，004 仍未获生产授权或应用到 Production。**
+**阶段：PR #36 已在本地合入通过 CI 的 #35 安全历史，004 原子性与永久生产检查器已修正，完整本地门禁通过；等待提交推送和新 GitHub CI，生产 002–004 尚未执行。**
 
 ### 当前最高优先级
 
-保持 PR #36 为 stacked OPEN 状态，不越过 PR #35 提前合并。数据库生产顺序必须保持 **002 → 003 → 004**：先分别完成迁移题与延迟保持率的数据库/应用发布闭环，再单独取得 004 授权、应用并验证私有表/RPC ACL，最后合并和发布课前诊断，并做真实登录账号恢复与重复提交验收。
+提交并推送 PR #36 安全收口，等待新 API/Web CI；随后把已验证历史逐层合入 #37/#38。数据库生产顺序保持 **002 → 003 → 004**：每层只从精确 PR 快照执行单项迁移，现场验证账本/ACL/RPC 后才合并、部署和进入下一层。
 
-不得因为本地测试通过就跳过 PR/CI、提前执行 004，或从包含未授权堆叠改动的脏工作树发布 Production。
+不得因为本地测试通过就跳过 PR/CI、一次执行多项迁移，或从堆叠开发分支直接发布 Production。
+
+最后更新：2026-08-26
 
 ## 2026-08-25｜云同步恢复中心已上线；延迟保持率完成主体实现
 
@@ -76,25 +85,29 @@
 - 服务端已补齐可信来源、原始基线、服务器到期时间、材料 revision、重复间隔和原子 claim 校验；202608250003_retention_measurements.sql 创建 Force RLS 私有认领表、service-role-only RPC 和 retention-v1 唯一索引。该迁移尚未应用生产。
 - 洞察页已修正既有误导口径：不再把 mastery 柱图称为“有效时间”，不再固定声称“稳步上升”，也不再用同一平均数伪造三项能力；“已修正”改为证据更窄的“本轮未再次检出”。
 - 延迟保持率提交 `4fde84f` 已推送并创建 stacked PR [#35](https://github.com/lizhuofan-curry/wenqu/pull/35)；保持率公式专项已扩展为 **8 组场景**，完整 `pnpm check` 通过（Production build 1805 modules，后端 **62 passed**，仅 1 条第三方弃用警告），PR #35 的 API 与 Web CI 均通过。
-- PR #34 已 retarget 到 `main`，API 与 Web CI 均通过；PR #35 仍以 PR #34 分支为 base，尚未合并。`202608250002_transfer_tasks.sql` 与 `202608250003_retention_measurements.sql` 均未获得本轮生产授权、未应用到 Production。
+- PR #34 已 retarget 到 `main`，API 与 Web CI 均通过；PR #35 仍以 PR #34 分支为 base，尚未合并。
+- 项目所有者已于 2026-08-26 明确授权在 Supabase Free Plan、无数据库备份的当前条件下，按 002→003→004 顺序执行生产迁移并继续合并发布；截至本记录，三项迁移尚未执行。
+- PR #35 发布前安全修正已完成：003 迁移由 runner 独占事务；私有声明表取消 service role 直连权限；RPC 固定空 search_path；迁移预检、partial unique index 与 API 预查均只接受 `server_verified_at IS NOT NULL` 的可信记录。
+- 生产检查器新增当前仓库迁移文件 SHA-256 与账本精确一致检查，并验证保持率表的 Force RLS、零策略、零非 owner 直连 ACL、约束、可信唯一索引和 service-role-only 原子 RPC。完整 `pnpm check` 通过：前端构建 1805 modules、保持率 8 场景、后端 **63 passed**，仅 1 条第三方弃用警告。
 - 真实 D1 保持率不能用合成时间或旧历史记录代替：必须在第二阶段上线后新建服务端可信 baseline，并在实际经过至少 24 小时后完成同口径复测才可验收。
 
 ### 当前阶段
 
-**阶段：云同步恢复中心已上线；PR #34 已 retarget `main` 且 CI 通过；延迟保持率已提交为 `4fde84f`、stacked PR #35 的 API/Web CI 均通过，但 #35 尚未合并，第二、第三阶段迁移均未获授权或应用。**
+**阶段：云同步恢复中心已上线；002–004 生产迁移已获明确授权但尚未执行；PR #35 发布安全补丁和完整本地 CI 已完成，等待提交推送后按 #34→#38 的堆叠顺序逐阶段迁移、合并、部署与验收。**
 
 ### 当前最高优先级
 
-先取得第二阶段生产授权，并严格保持以下发布与验收顺序：
+严格保持以下发布与验收顺序：
 
-1. 先只读检查 tr_[0-9a-f]{32} 预占并应用 202608250002_transfer_tasks.sql；
-2. 验证第二阶段表/RPC ACL 后合并并发布 PR #34，完成迁移题 Production 验收；
-3. 再单独取得授权、应用并验证 202608250003_retention_measurements.sql；
-4. 合并并发布 PR #35，创建新的 server_verified_at 可信 baseline；
-5. 实际等待至少 24 小时后完成真实 D1 同口径复测与保持率验收。
+1. 提交并推送 PR #35 安全补丁，等待新 CI；
+2. 将补丁逐层合并到 PR #36–#38，并先修正 004 迁移事务和生产检查器；
+3. 从精确 PR #34 快照只执行 002，验证后合并、部署并完成迁移题验收；
+4. 从精确 PR #35 快照只执行 003，验证后合并、部署并创建可信保持率 baseline；
+5. 从精确 PR #36 快照只执行 004，验证后依次合并和发布 #36–#38；
+6. 实际等待至少 24 小时后完成真实 D1 同口径复测与保持率验收。
 
-不得把尚未合并的 PR #35、尚未应用的第二/第三阶段迁移，或尚未实际等待满 24 小时的 D1 写成已上线或已验收。
-最后更新：2026-08-25
+不得把尚未合并的 PR #34–#38、尚未应用的 002–004 迁移，或尚未实际等待满 24 小时的 D1 写成已上线或已验收。
+最后更新：2026-08-26
 
 ## 2026-08-25｜错因驱动迁移检验完成实现与本地门禁
 

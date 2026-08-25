@@ -1,5 +1,3 @@
-begin;
-
 -- Diagnostics never write study_records; fail closed if their namespace was occupied.
 do $$
 begin
@@ -192,5 +190,3 @@ grant execute on function public.claim_diagnostic_attempt(
 grant execute on function public.complete_diagnostic_attempt(
   text, uuid, text, jsonb
 ) to service_role;
-
-commit;
