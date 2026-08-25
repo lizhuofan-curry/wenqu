@@ -1,8 +1,5 @@
 import type { ArchiveItem } from "./types";
-import {
-  type LocalProfile,
-  type LocalStudyRecord,
-} from "./storage";
+import type { LocalProfile } from "./storage";
 
 type SupabaseClient = import("@supabase/supabase-js").SupabaseClient;
 type AuthSession = import("@supabase/supabase-js").Session;
@@ -177,46 +174,6 @@ export async function logoutCloudAccount() {
   if (error) throw new Error(error.message);
 }
 
-function toCloudRecord(record: LocalStudyRecord, userId: string) {
-  return {
-    session_id: record.session.id,
-    user_id: userId,
-    material_id: record.archive.material_id,
-    material_title: record.archive.material_title,
-    persona_name: record.archive.persona_name,
-    completed_at: record.archive.completed_at,
-    mastery: record.archive.mastery,
-    headline: record.archive.headline,
-    misconception_tags: record.archive.misconception_tags,
-    retelling: record.retelling,
-    answers: record.answers,
-    session_data: record.session,
-    saved_at: record.savedAt,
-  };
-}
-
-export async function saveRecordToCloud(
-  record: LocalStudyRecord,
-  expectedUserId?: string | null,
-) {
-  const client = await getClient();
-  if (!client) return false;
-  // Use the same client session that will authorize the following
-  // RLS-protected upsert. A second getUser() request can transiently fail
-  // immediately after login even when the local session is already valid.
-  const { data, error: sessionError } = await client.auth.getSession();
-  if (sessionError) {
-    throw new Error(`登录状态读取失败：${sessionError.message}`);
-  }
-  const userId = data.session?.user.id || null;
-  if (!userId) return false;
-  if (expectedUserId !== undefined && userId !== expectedUserId) return false;
-  const { error } = await client
-    .from("study_records")
-    .upsert(toCloudRecord(record, userId), { onConflict: "session_id,user_id" });
-  if (error) throw new Error(`云端记录保存失败：${error.message}`);
-  return true;
-}
 
 export async function loadCloudArchive(): Promise<ArchiveItem[] | null> {
   const client = await getClient();

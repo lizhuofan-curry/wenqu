@@ -201,6 +201,15 @@
   font-style: normal;
 }
 
+
+.sidebar-footer.sync-pending {
+  border-color: color-mix(in srgb, var(--cinnabar) 42%, var(--line));
+}
+
+.sidebar-footer.sync-pending .status-dot {
+  background: var(--cinnabar);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--cinnabar) 16%, transparent);
+}
 .app-body {
   min-width: 0;
 }

@@ -22,6 +22,14 @@ export type LocalStudyRecord = {
   answers: Array<{ question_id: string; response: string }>;
   retelling: string;
   savedAt: string;
+  sync?: {
+    status: "pending" | "synced" | "local-only";
+    ownerUserId: string;
+    retryToken?: string;
+    attempts: number;
+    lastAttemptAt?: string;
+    lastError?: string;
+  };
 };
 
 function readJson<T>(key: string, fallback: T): T {
@@ -99,13 +107,13 @@ export function saveActiveSession(session: Session) {
   );
 }
 
-export function loadStudyRecords(): LocalStudyRecord[] {
+export function loadStudyRecords(namespace = currentNamespace()): LocalStudyRecord[] {
   migrateLegacyAnonymousData();
-  return readJson<LocalStudyRecord[]>(namespacedKey(RECORDS_PREFIX), []);
+  return readJson<LocalStudyRecord[]>(namespacedKey(RECORDS_PREFIX, namespace), []);
 }
 
-export function loadLocalArchive(): ArchiveItem[] {
-  return loadStudyRecords()
+export function loadLocalArchive(namespace = currentNamespace()): ArchiveItem[] {
+  return loadStudyRecords(namespace)
     .map((record) => ({
       ...record.archive,
       answers: record.answers,
@@ -114,15 +122,89 @@ export function loadLocalArchive(): ArchiveItem[] {
     .sort((a, b) => b.completed_at.localeCompare(a.completed_at));
 }
 
-export function saveStudyRecord(record: LocalStudyRecord) {
-  const records = loadStudyRecords().filter(
+export function saveStudyRecord(
+  record: LocalStudyRecord,
+  namespace = currentNamespace(),
+) {
+  const records = loadStudyRecords(namespace).filter(
     (item) => item.session.id !== record.session.id,
   );
   records.unshift(record);
-  localStorage.setItem(namespacedKey(RECORDS_PREFIX), JSON.stringify(records));
-  localStorage.removeItem(namespacedKey(ACTIVE_SESSION_PREFIX));
+  localStorage.setItem(
+    namespacedKey(RECORDS_PREFIX, namespace),
+    JSON.stringify(records),
+  );
+  localStorage.removeItem(namespacedKey(ACTIVE_SESSION_PREFIX, namespace));
 }
 
+
+export function loadPendingSyncRecords(ownerUserId: string): LocalStudyRecord[] {
+  return loadStudyRecords(ownerUserId).filter(
+    (record) =>
+      record.sync?.status === "pending" &&
+      record.sync.ownerUserId === ownerUserId &&
+      Boolean(record.sync.retryToken),
+  );
+}
+
+export function loadLocalOnlySyncRecords(ownerUserId: string): LocalStudyRecord[] {
+  return loadStudyRecords(ownerUserId).filter(
+    (record) =>
+      (record.sync?.status === "local-only" &&
+        record.sync.ownerUserId === ownerUserId) ||
+      (record.sync === undefined && record.session.cloud_saved === false),
+  );
+}
+
+
+export function markStudyRecordSynced(ownerUserId: string, sessionId: string) {
+  const records = loadStudyRecords(ownerUserId).map((record) =>
+    record.session.id === sessionId && record.sync?.ownerUserId === ownerUserId
+      ? {
+          ...record,
+          session: {
+            ...record.session,
+            cloud_saved: true,
+            cloud_retry_token: undefined,
+          },
+          sync: {
+            ...record.sync,
+            status: "synced" as const,
+            retryToken: undefined,
+            lastError: undefined,
+          },
+        }
+      : record,
+  );
+  localStorage.setItem(
+    namespacedKey(RECORDS_PREFIX, ownerUserId),
+    JSON.stringify(records),
+  );
+}
+
+export function markStudyRecordSyncFailed(
+  ownerUserId: string,
+  sessionId: string,
+  message: string,
+) {
+  const records = loadStudyRecords(ownerUserId).map((record) =>
+    record.session.id === sessionId && record.sync?.ownerUserId === ownerUserId
+      ? {
+          ...record,
+          sync: {
+            ...record.sync,
+            attempts: record.sync.attempts + 1,
+            lastAttemptAt: new Date().toISOString(),
+            lastError: message,
+          },
+        }
+      : record,
+  );
+  localStorage.setItem(
+    namespacedKey(RECORDS_PREFIX, ownerUserId),
+    JSON.stringify(records),
+  );
+}
 export function exportLocalData() {
   const payload = {
     exportedAt: new Date().toISOString(),

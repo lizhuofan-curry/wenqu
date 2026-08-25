@@ -34,6 +34,8 @@ type ShellProps = {
   cloudEnabled: boolean;
   demoMode: boolean;
   degraded: boolean;
+  pendingSyncCount: number;
+  localOnlySyncCount: number;
 };
 
 const items: Array<{
@@ -59,6 +61,8 @@ export function Shell({
   cloudEnabled,
   demoMode,
   degraded,
+  pendingSyncCount,
+  localOnlySyncCount,
 }: ShellProps) {
   const [dark, setDark] = useState(() => localStorage.getItem("wenqu-theme") === "dark");
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -122,13 +126,37 @@ export function Shell({
           </div>
         </div>
 
-        <div className="sidebar-footer">
+        <div className={pendingSyncCount || localOnlySyncCount ? "sidebar-footer sync-pending" : "sidebar-footer"}>
           <span className="status-dot" />
           <div>
-            <strong>{cloudEnabled ? "云端同步已开启" : "本地记录已开启"}</strong>
-            <small>{cloudEnabled ? "登录后可跨设备查看" : "完成后可导出数据"}</small>
+            <strong>
+              {!cloudEnabled
+                ? "本地记录已开启"
+                : !userName
+                  ? "登录后开启云端同步"
+                  : pendingSyncCount
+                    ? localOnlySyncCount
+                      ? `${pendingSyncCount + localOnlySyncCount} 条记录尚未上云`
+                      : `${pendingSyncCount} 条记录待同步`
+                    : localOnlySyncCount
+                      ? `${localOnlySyncCount} 条记录仅在本机`
+                      : "当前无待同步副本"}
+            </strong>
+            <small>
+              {!cloudEnabled
+                ? "完成后可导出数据"
+                : pendingSyncCount
+                  ? localOnlySyncCount
+                    ? `${pendingSyncCount} 条可重试，${localOnlySyncCount} 条仅在本机`
+                    : "本机副本仍保存在此浏览器"
+                  : localOnlySyncCount
+                    ? "请从阅读档案导出备份"
+                    : userName
+                      ? "可跨设备查看学习档案"
+                      : "登录后可跨设备查看"}
+            </small>
           </div>
-          <em>v.2</em>
+          <em>v.4</em>
         </div>
       </aside>
 

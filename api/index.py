@@ -6,8 +6,10 @@ The FastAPI app is mounted as an ASGI application.
 
 from __future__ import annotations
 
+import base64
 import json
 import hashlib
+import hmac
 import logging
 import os
 import re
@@ -18,7 +20,7 @@ import urllib.error as _urlerror
 import urllib.parse as _urlparse
 import urllib.request as _urllib
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Dict, List
 
 # Vercel adds <project-root>/api to sys.path.  Add <project-root> so we can
@@ -37,6 +39,7 @@ logger = logging.getLogger(__name__)
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
 _supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
 _supa_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip().strip('"')
+_archive_retry_secret = os.getenv("ARCHIVE_RETRY_SECRET", "").strip().strip('"')
 _supa_auth_key = (
     os.getenv("SUPABASE_ANON_KEY", "")
     or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY", "")
@@ -85,12 +88,99 @@ def _supa_up_study_record(body: dict):
         headers={
             **_service_headers(),
             "Content-Type": "application/json",
-            "Prefer": "resolution=merge-duplicates",
+            "Prefer": "resolution=ignore-duplicates",
         },
         method="POST",
     )
     with _urllib.urlopen(req, timeout=10):
         pass
+
+def _base64url_encode(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).decode("ascii").rstrip("=")
+
+
+def _base64url_decode(value: str) -> bytes:
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4))
+
+def _archive_retry_key() -> bytes | None:
+    key = _archive_retry_secret.encode("utf-8")
+    return key if len(key) >= 32 else None
+
+
+
+def _sign_archive_retry(record: dict) -> str | None:
+    """Return a tamper-evident browser receipt for one server-owned record."""
+    key = _archive_retry_key()
+    if key is None:
+        return None
+    payload = {
+        "version": 1,
+        "issued_at": datetime.now(UTC).isoformat(),
+        "record": record,
+    }
+    encoded = _base64url_encode(
+        json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    )
+    signature = _base64url_encode(
+        hmac.new(
+            key,
+            encoded.encode("ascii"),
+            hashlib.sha256,
+        ).digest()
+    )
+    return f"{encoded}.{signature}"
+
+
+def _verify_archive_retry(receipt: str) -> dict:
+    key = _archive_retry_key()
+    if key is None:
+        raise HTTPException(
+            503,
+            "云端恢复服务配置无效：ARCHIVE_RETRY_SECRET 必须至少包含 32 个 UTF-8 字节。",
+        )
+    try:
+        encoded, signature = receipt.split(".", 1)
+        expected = _base64url_encode(
+            hmac.new(
+                key,
+                encoded.encode("ascii"),
+                hashlib.sha256,
+            ).digest()
+        )
+        if not hmac.compare_digest(signature, expected):
+            raise ValueError("signature mismatch")
+        payload = json.loads(_base64url_decode(encoded).decode("utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("invalid payload")
+        if payload.get("version") != 1:
+            raise ValueError("invalid version")
+        issued_at = datetime.fromisoformat(payload["issued_at"])
+        if issued_at.tzinfo is None:
+            issued_at = issued_at.replace(tzinfo=UTC)
+        now = datetime.now(UTC)
+        if issued_at > now + timedelta(minutes=5):
+            raise HTTPException(422, "云端恢复凭据的签发时间无效。")
+        if now - issued_at > timedelta(days=90):
+            raise HTTPException(410, "这条恢复凭据已超过 90 天，请保留本地备份并联系维护者。")
+        record = payload["record"]
+        if not isinstance(record, dict):
+            raise ValueError("invalid payload")
+        if not isinstance(record.get("session_id"), str) or not isinstance(
+            record.get("user_id"),
+            str,
+        ):
+            raise ValueError("invalid record")
+        return record
+    except HTTPException:
+        raise
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+    ) as exc:
+        raise HTTPException(422, "云端恢复凭据无效或已被修改。") from exc
 
 
 def _supa_del(table: str, mid: str, user_id: str):
@@ -758,6 +848,13 @@ class EvaluationRequest(BaseModel):
     expected_user_id: str | None = Field(default=None, min_length=1, max_length=64)
     review_source_session_id: str | None = Field(default=None, min_length=1, max_length=128)
     review_interval_days: int | None = Field(default=None)
+
+
+class ArchiveRetryRequest(BaseModel):
+    retry_token: str = Field(min_length=20, max_length=100_000)
+    expected_user_id: str = Field(min_length=1, max_length=64)
+
+
 def _validated_review_link(
     req: EvaluationRequest, user_id: str | None, material_id: str, session_id: str
 ) -> dict | None:
@@ -986,6 +1083,7 @@ def health() -> dict:
         "status": "ok",
         "version": "v.4",
         "ai_configured": ai_configured,
+        "archive_retry_configured": _archive_retry_key() is not None,
         "ai_provider": settings.ai_provider,
         "model": settings.deepseek_model if settings.ai_provider == "deepseek" else settings.openai_model,
     }
@@ -1551,7 +1649,8 @@ async def evaluate_session(
     )
     public_completed = _public_session(completed)
     cloud_saved = False
-    if user_id is not None and _supa_ok():
+    retry_token = None
+    if user_id is not None:
         if review_link is not None:
             public_completed["review"] = review_link
         persona_name = next(
@@ -1573,14 +1672,43 @@ async def evaluate_session(
             "session_data": public_completed,
             "saved_at": datetime.now(UTC).isoformat(),
         }
-        try:
-            _supa_up_study_record(record)
-        except Exception as exc:
-            logger.warning("archive_save_failed error=%s", type(exc).__name__)
+        if _supa_ok():
+            try:
+                _supa_up_study_record(record)
+            except Exception as exc:
+                logger.warning("archive_save_failed error=%s", type(exc).__name__)
+                retry_token = _sign_archive_retry(record)
+            else:
+                cloud_saved = True
         else:
-            cloud_saved = True
+            retry_token = _sign_archive_retry(record)
     public_completed["cloud_saved"] = cloud_saved
+    if retry_token is not None:
+        public_completed["cloud_retry_token"] = retry_token
     return public_completed
+
+
+
+@app.post("/api/archive/retry")
+def retry_archive_save(
+    req: ArchiveRetryRequest,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+):
+    user_id = _auth_user(authorization, required=True)
+    assert user_id is not None
+    if req.expected_user_id != user_id:
+        raise HTTPException(409, "登录账号状态不一致，未执行云端恢复。")
+    if not _supa_ok():
+        raise HTTPException(503, "云端档案暂时不可用，请稍后重试。")
+    record = _verify_archive_retry(req.retry_token)
+    if record.get("user_id") != user_id:
+        raise HTTPException(403, "这条恢复记录不属于当前账号。")
+    try:
+        _supa_up_study_record(record)
+    except Exception as exc:
+        logger.warning("archive_retry_failed error=%s", type(exc).__name__)
+        raise HTTPException(503, "云端档案仍不可用，本地副本会继续保留。") from exc
+    return {"cloud_saved": True, "session_id": record["session_id"]}
 
 
 # NOTE: /api/archive intentionally not implemented here.

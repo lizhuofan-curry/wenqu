@@ -219,6 +219,15 @@ export const api = {
     ),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),
+  retryArchive: (retryToken: string, expectedUserId: string) =>
+    request<{ cloud_saved: true; session_id: string }>("/archive/retry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        retry_token: retryToken,
+        expected_user_id: expectedUserId,
+      }),
+    }),
   createSession: async (materialId: string, personaId: string, questions?: Array<{ id: string; prompt: string }>) => {
     const fallback = () => {
       latestDemoSession = createDemoSession(personaId);

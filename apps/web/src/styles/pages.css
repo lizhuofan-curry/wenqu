@@ -1092,7 +1092,7 @@
   position: relative;
   display: grid;
   min-height: 220px;
-  grid-template-columns: 92px 1fr auto;
+  grid-template-columns: 92px minmax(0, 1fr);
   align-items: stretch;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1100,6 +1100,19 @@
   box-shadow: var(--shadow-card);
   cursor: pointer;
   transition: transform 180ms var(--ease), box-shadow 180ms var(--ease);
+}
+
+.archive-card-toggle {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  border-radius: 0;
+  background: transparent;
+}
+
+.archive-card-toggle:focus-visible {
+  outline-offset: -4px;
 }
 
 .archive-card.expanded {
@@ -1139,7 +1152,7 @@
 }
 
 .archive-main {
-  padding: 22px;
+  padding: 22px 48px 22px 22px;
 }
 
 .archive-main h2 {
@@ -1167,14 +1180,18 @@
 }
 
 .archive-card > svg {
-  align-self: flex-start;
-  margin: 24px 16px 0 0;
+  position: absolute;
+  top: 24px;
+  right: 16px;
+  margin: 0;
   color: var(--indigo);
   flex-shrink: 0;
 }
 
 .archive-detail {
-  margin-top: 16px;
+  z-index: 1;
+  grid-column: 2;
+  margin: 0 48px 0 22px;
   padding-top: 16px;
   border-top: 1px solid var(--line);
 }
@@ -1331,7 +1348,4 @@
     grid-template-columns: 72px 1fr;
   }
 
-  .archive-card > button {
-    display: none;
-  }
 }

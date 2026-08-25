@@ -95,6 +95,7 @@ export type Session = {
   result?: EvaluationResult | null;
   review?: ReviewLink;
   cloud_saved?: boolean;
+  cloud_retry_token?: string | null;
 };
 
 export type ReviewLink = {

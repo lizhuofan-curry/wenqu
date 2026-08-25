@@ -16,8 +16,10 @@ import {
 } from "lucide-react";
 import { useRef } from "react";
 import type { CSSProperties } from "react";
+import type { LocalStudyRecord } from "../lib/storage";
 import type { ArchiveItem, MaterialSummary, Persona, ReviewTask } from "../lib/types";
 import { ReviewQueue } from "./ReviewQueue";
+import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
 
 type DashboardProps = {
   materials: MaterialSummary[];
@@ -34,6 +36,11 @@ type DashboardProps = {
   archive: ArchiveItem[];
   reviewTasks: ReviewTask[];
   onStartReview: (task: ReviewTask) => void;
+  pendingSyncRecords: LocalStudyRecord[];
+  localOnlySyncRecords: LocalStudyRecord[];
+  syncingRecordId: string | null;
+  onRetrySync: (sessionId: string) => void;
+  onRetryAllSync: () => void;
 };
 
 export function Dashboard({
@@ -51,6 +58,11 @@ export function Dashboard({
   archive,
   reviewTasks,
   onStartReview,
+  pendingSyncRecords,
+  localOnlySyncRecords,
+  syncingRecordId,
+  onRetrySync,
+  onRetryAllSync,
 }: DashboardProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const averageMastery = archive.length
@@ -121,6 +133,13 @@ export function Dashboard({
         tasks={reviewTasks}
         busy={busy}
         onStart={onStartReview}
+      />
+      <SyncRecoveryPanel
+        records={pendingSyncRecords}
+        syncingId={syncingRecordId}
+        localOnlyRecords={localOnlySyncRecords}
+        onRetry={onRetrySync}
+        onRetryAll={onRetryAllSync}
       />
       <section className="quick-grid">
         <button onClick={() => onNavigate("materials")}>

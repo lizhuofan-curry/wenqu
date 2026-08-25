@@ -1,10 +1,27 @@
 import { Archive, Brain, CalendarDays, ChevronDown, ChevronUp, Download } from "lucide-react";
 import { useState } from "react";
 import type { ArchiveItem } from "../lib/types";
-import { exportLocalData } from "../lib/storage";
+import { exportLocalData, type LocalStudyRecord } from "../lib/storage";
 import { cloudEnabled } from "../lib/cloud";
+import { SyncRecoveryPanel } from "./SyncRecoveryPanel";
 
-export function ArchiveView({ items }: { items: ArchiveItem[] }) {
+type ArchiveViewProps = {
+  items: ArchiveItem[];
+  pendingSyncRecords: LocalStudyRecord[];
+  localOnlySyncRecords: LocalStudyRecord[];
+  syncingRecordId: string | null;
+  onRetrySync: (sessionId: string) => void;
+  onRetryAllSync: () => void;
+};
+
+export function ArchiveView({
+  items,
+  pendingSyncRecords,
+  syncingRecordId,
+  onRetrySync,
+  localOnlySyncRecords,
+  onRetryAllSync,
+}: ArchiveViewProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   return (
@@ -15,7 +32,11 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
           <h1>阅读档案</h1>
         </div>
         <div className="archive-actions">
-          <button className="primary-button" onClick={exportLocalData} disabled={!items.length}>
+          <button
+            className="primary-button"
+            onClick={exportLocalData}
+            disabled={!items.length && !pendingSyncRecords.length && !localOnlySyncRecords.length}
+          >
             <Download size={17} />
             {cloudEnabled ? "导出本机备份" : "导出测试数据"}
           </button>
@@ -26,6 +47,14 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
           </div>
         </div>
       </header>
+
+      <SyncRecoveryPanel
+        records={pendingSyncRecords}
+        syncingId={syncingRecordId}
+        localOnlyRecords={localOnlySyncRecords}
+        onRetry={onRetrySync}
+        onRetryAll={onRetryAllSync}
+      />
 
       {items.length === 0 ? (
         <div className="empty-archive">
@@ -41,8 +70,15 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
               <article
                 className={`archive-card${open ? " expanded" : ""}`}
                 key={item.session_id}
-                onClick={() => setExpandedId(open ? null : item.session_id)}
               >
+                <button
+                  className="archive-card-toggle"
+                  type="button"
+                  aria-expanded={open}
+                  aria-controls={`archive-detail-${item.session_id}`}
+                  aria-label={`${open ? "收起" : "展开"}“${item.material_title}”的学习档案`}
+                  onClick={() => setExpandedId(open ? null : item.session_id)}
+                />
                 <div className="archive-score">
                   <strong>{item.mastery}</strong>
                   <span>掌握度</span>
@@ -64,16 +100,18 @@ export function ArchiveView({ items }: { items: ArchiveItem[] }) {
                       ))}
                     </div>
                   )}
-                  {open && (
-                    <div className="archive-detail">
-                      <div className="archive-detail-section">
-                        <strong>我的复述</strong>
-                        <p>{item.retelling || "（未记录复述内容）"}</p>
-                      </div>
-                    </div>
-                  )}
                 </div>
                 {open ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                <div
+                  id={`archive-detail-${item.session_id}`}
+                  className="archive-detail"
+                  hidden={!open}
+                >
+                  <div className="archive-detail-section">
+                    <strong>我的复述</strong>
+                    <p>{item.retelling || "（未记录复述内容）"}</p>
+                  </div>
+                </div>
               </article>
             );
           })}
