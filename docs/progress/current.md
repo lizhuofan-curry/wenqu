@@ -3,7 +3,7 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
-## 2026-08-25｜自适应学习路线 MVP 完成本地实现
+## 2026-08-25｜自适应学习路线 MVP 完成 GitHub 验证
 
 - StudyFlow 严格保留后端 `recommendedPath` 输入顺序，并按当前材料章节过滤无效 ID、自然去重；学习者可以显式停止建议、恢复建议或手动浏览全部章节，所有章节切换都会聚焦当前章节标题。
 - 建议路线只显示“建议位置 x/N”，不把当前位置冒充完成度。流程条从材料地图的真实 0% 开始，只把已经离开的步骤标为完成；未来步骤禁用，当前步骤使用 `aria-current="step"`。
@@ -11,15 +11,15 @@
 - 测验开始后路线和复核状态冻结。路线状态、理解标记与复核清单不写 `localStorage`、`study_records` 或正式评分载荷，不使用 confidence、停留时间或关键词推断理解，也没有新增 `005` 数据库迁移。
 - 移动端路线、理解按钮和复核操作保持至少 44px 触控高度，窄屏按钮满宽；键盘切换路线、章节和复核项后均有明确焦点目标。
 - 当前本地验证：诊断 UI **35 assertions passed**，完整 `pnpm check` 退出码为 **0**；TypeScript、Vite Production build（**1807 modules**）、保持率 8 组场景、两套 Ruff 与 Python 编译均通过，完整 API **96 passed**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告。正式评分载荷、档案写入与 reviewTask 路径的隔离终审通过；`git diff --check` 无错误，仅有既有 CRLF 提示。
-- 本轮改动仍在工作区，**尚未提交、尚未推送、尚未创建或更新 PR、尚未运行 GitHub CI，也未发布 Production**。这只是前端会话内 MVP，不代表 004 已获生产授权或已上线。
+- 功能提交 `52cd9ec` 已推送到 `codex/adaptive-route`；stacked PR [#37](https://github.com/lizhuofan-curry/wenqu/pull/37) 以 PR #36 的 `codex/prestudy-diagnostic` 为 base，API lint/tests 与 Web typecheck/build 两项 GitHub CI 均通过。PR #37 当前 **OPEN、未合并**，未发布 Production；本功能没有 `005`，也不授权或执行任何生产迁移。
 
 ### 当前阶段
 
-**阶段：自适应学习路线 MVP 已完成本地实现、隔离终审和完整本地门禁；改动未提交、未推送、未创建 PR、未跑 GitHub CI，004 仍未获生产授权或应用，且没有 005。**
+**阶段：自适应学习路线 MVP 已完成本地实现、隔离终审、完整门禁、提交推送、stacked PR #37 与 GitHub API/Web CI；PR #37 仍 OPEN、未合并，且没有 005 或 Production 发布。**
 
 ### 当前最高优先级
 
-确认 diff 只包含预期文件后提交并推送自适应分支，创建以课前诊断分支为 base 的 stacked PR 并等待 GitHub API/Web CI 终态；不得从当前工作区直接发布或越过 002 → 003 → 004 的生产顺序。
+保持 PR #37 为 stacked OPEN 状态，不越过 PR #36 提前合并或部署。继续遵守 002 → 003 → 004 的生产迁移与应用发布顺序；自适应路线本身不新增生产迁移。
 
 
 ## 2026-08-25｜课前诊断与个性化起点完成本地实现
