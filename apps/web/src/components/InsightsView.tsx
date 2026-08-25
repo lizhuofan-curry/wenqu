@@ -6,15 +6,29 @@ import {
   Target,
 } from "lucide-react";
 import type { ArchiveItem } from "../lib/types";
+import type { EvidenceMaterialSnapshot, EvidenceNoteCard } from "../lib/evidenceNotes";
 import { buildRetentionReport } from "../lib/retention";
+import { EvidenceNotesPanel } from "./EvidenceNotesPanel";
 import { RetentionPanel } from "./RetentionPanel";
 
 export function InsightsView({
   items,
   onReview,
+  evidenceNotes,
+  materials,
+  evidenceMaterialSnapshots,
+  evidenceMaterialId,
+  onEditEvidenceNote,
+  onDeleteEvidenceNote,
 }: {
   items: ArchiveItem[];
   onReview: () => void;
+  evidenceNotes: EvidenceNoteCard[];
+  materials: import("../lib/types").MaterialSummary[];
+  evidenceMaterialSnapshots: EvidenceMaterialSnapshot[];
+  evidenceMaterialId?: string | null;
+  onEditEvidenceNote: (note: EvidenceNoteCard, trigger: HTMLElement) => void;
+  onDeleteEvidenceNote: (note: EvidenceNoteCard, nextFocus: HTMLElement | null) => void;
 }) {
   const baselines = items.filter((item) => !item.review && !item.transfer);
   const reviews = items.filter((item) => Boolean(item.review));
@@ -107,6 +121,14 @@ export function InsightsView({
         </div>
         <button onClick={onReview}>开始复习</button>
       </section>
+      <EvidenceNotesPanel
+        notes={evidenceNotes}
+        materials={materials}
+        materialSnapshots={evidenceMaterialSnapshots}
+        initialMaterialId={evidenceMaterialId}
+        onEdit={onEditEvidenceNote}
+        onDelete={onDeleteEvidenceNote}
+      />
     </div>
   );
 }

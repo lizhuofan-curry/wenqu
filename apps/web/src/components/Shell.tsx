@@ -81,7 +81,7 @@ export function Shell({
   return (
     <div className={view === "study" ? "app-shell study-mode" : "app-shell"}>
       <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
-        <button className="mobile-close" onClick={() => setMobileOpen(false)}>
+        <button className="mobile-close" type="button" aria-label="关闭导航菜单" onClick={() => setMobileOpen(false)}>
           <X size={20} />
         </button>
         <button className="brand" onClick={() => go("home")}>
@@ -163,7 +163,7 @@ export function Shell({
 
       <div className="app-body">
         <header className="global-topbar">
-          <button className="mobile-menu" onClick={() => setMobileOpen(true)}>
+          <button className="mobile-menu" type="button" aria-label="打开导航菜单" onClick={() => setMobileOpen(true)}>
             <Menu size={20} />
           </button>
           <div className="topbar-actions">
