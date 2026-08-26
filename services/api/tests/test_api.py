@@ -17,6 +17,7 @@ def test_health_and_builtin_material(tmp_path, monkeypatch):
         health = client.get("/api/health")
         assert health.status_code == 200
         assert health.json()["status"] == "ok"
+        assert health.json()["version"] == "v.5"
 
         materials = client.get("/api/materials")
         assert materials.status_code == 200

@@ -1196,7 +1196,7 @@ def health() -> dict:
     )
     return {
         "status": "ok",
-        "version": "v.4",
+        "version": "v.5",
         "ai_configured": ai_configured,
         "archive_retry_configured": _archive_retry_key() is not None,
         "ai_provider": settings.ai_provider,

@@ -58,7 +58,7 @@ def health() -> dict[str, str | bool]:
     model = settings.deepseek_model if provider == "deepseek" else settings.openai_model
     return {
         "status": "ok",
-        "version": "v.0",
+        "version": "v.5",
         "ai_configured": ai_configured,
         "ai_provider": provider,
         "model": model,
