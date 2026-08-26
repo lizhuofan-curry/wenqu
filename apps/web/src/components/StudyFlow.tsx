@@ -553,7 +553,7 @@ export function StudyFlow({
               <BrainCircuit size={32} />
             </div>
             <p className="eyebrow">最后一步 · 让知识变成你的</p>
-            <h2>不用看上文，用 3—5 句话讲清楚</h2>
+            <h2>不用看上文，用 3-5 句话讲清楚</h2>
             <blockquote>
               这篇论文发现了什么问题？Squeeze、Excitation 和 Scale 如何工作？
               它为什么能接入 ResNet？

@@ -14,6 +14,7 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100vh;
+  min-height: 100dvh;
   color: var(--ink);
   background:
     radial-gradient(circle at 82% 2%, color-mix(in srgb, var(--gold) 7%, transparent), transparent 26rem),
@@ -36,7 +37,8 @@ body::before {
 
 button,
 input,
-textarea {
+textarea,
+select {
   color: inherit;
   font: inherit;
 }
@@ -56,13 +58,16 @@ button:disabled {
 
 button,
 input,
-textarea {
+textarea,
+select {
   outline: none;
 }
 
+a:focus-visible,
 button:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--indigo) 65%, transparent);
   outline-offset: 3px;
 }

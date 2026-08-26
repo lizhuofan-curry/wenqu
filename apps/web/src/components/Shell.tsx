@@ -80,11 +80,11 @@ export function Shell({
 
   return (
     <div className={view === "study" ? "app-shell study-mode" : "app-shell"}>
-      <aside className={mobileOpen ? "sidebar open" : "sidebar"}>
+      <aside id="app-sidebar" className={mobileOpen ? "sidebar open" : "sidebar"}>
         <button className="mobile-close" type="button" aria-label="关闭导航菜单" onClick={() => setMobileOpen(false)}>
           <X size={20} />
         </button>
-        <button className="brand" onClick={() => go("home")}>
+        <button className="brand" type="button" onClick={() => go("home")}>
           <span className="brand-mark">问</span>
           <span>
             <strong>问渠</strong>
@@ -99,20 +99,24 @@ export function Shell({
             return (
               <button
                 key={item.id}
+                type="button"
                 className={view === item.id ? "active" : ""}
+                aria-current={view === item.id ? "page" : undefined}
                 onClick={() => go(item.id)}
               >
-                <Icon size={18} />
+                <Icon size={18} aria-hidden="true" />
                 {item.label}
               </button>
             );
           })}
           {studyEnabled && (
             <button
+              type="button"
               className={view === "study" ? "active" : ""}
+              aria-current={view === "study" ? "page" : undefined}
               onClick={() => go("study")}
             >
-              <span className="live-dot" />
+              <span className="live-dot" aria-hidden="true" />
               正在陪读
             </button>
           )}
@@ -123,7 +127,7 @@ export function Shell({
           <div>
             <span>问渠 · 取义</span>
             <p>问渠那得清如许，为有源头活水来。</p>
-            <small>—— 朱熹《观书有感》</small>
+            <small>朱熹《观书有感》</small>
           </div>
         </div>
 
@@ -163,37 +167,46 @@ export function Shell({
 
       <div className="app-body">
         <header className="global-topbar">
-          <button className="mobile-menu" type="button" aria-label="打开导航菜单" onClick={() => setMobileOpen(true)}>
-            <Menu size={20} />
+          <button
+            className="mobile-menu"
+            type="button"
+            aria-label="打开导航菜单"
+            aria-controls="app-sidebar"
+            aria-expanded={mobileOpen}
+            onClick={() => setMobileOpen(true)}
+          >
+            <Menu size={20} aria-hidden="true" />
           </button>
           <div className="topbar-actions">
             <button
               className="icon-button"
+              type="button"
               onClick={() => setDark((value) => !value)}
               aria-label={dark ? "切换到白天模式" : "切换到夜间模式"}
+              aria-pressed={dark}
               title={dark ? "白天模式" : "夜间模式"}
             >
-              {dark ? <Sun size={18} /> : <Moon size={18} />}
+              {dark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
             </button>
             {userName ? (
               <>
-                <button className="user-chip" title="当前登录用户">
-                  <span>{userName.slice(0, 1)}</span>
+                <button className="user-chip" type="button" title="当前登录用户">
+                  <span aria-hidden="true">{userName.slice(0, 1)}</span>
                   {userName}
                 </button>
-                <button className="login-button" onClick={onSignOut}>
-                  <LogOut size={16} />
+                <button className="login-button" type="button" onClick={onSignOut}>
+                  <LogOut size={16} aria-hidden="true" />
                   退出
                 </button>
               </>
             ) : (
               <>
-                <button className="login-button" onClick={() => onAuth("login")}>
-                  <LogIn size={16} />
+                <button className="login-button" type="button" onClick={() => onAuth("login")}>
+                  <LogIn size={16} aria-hidden="true" />
                   登录
                 </button>
-                <button className="register-button" onClick={() => onAuth("register")}>
-                  <UserPlus size={16} />
+                <button className="register-button" type="button" onClick={() => onAuth("register")}>
+                  <UserPlus size={16} aria-hidden="true" />
                   免费注册
                 </button>
               </>
@@ -212,7 +225,14 @@ export function Shell({
         )}
         <main className="main-content">{children}</main>
       </div>
-      {mobileOpen && <button className="mobile-overlay" onClick={() => setMobileOpen(false)} />}
+      {mobileOpen && (
+        <button
+          className="mobile-overlay"
+          type="button"
+          aria-label="关闭导航菜单"
+          onClick={() => setMobileOpen(false)}
+        />
+      )}
     </div>
   );
 }

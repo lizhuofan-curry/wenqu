@@ -85,8 +85,8 @@ export function MaterialsView({
           <h1>资料库</h1>
           <p>把论文、章节和笔记整理成可学习、可追溯的材料。</p>
         </div>
-        <button className="primary-button" onClick={() => inputRef.current?.click()}>
-          <UploadCloud size={17} />
+        <button className="primary-button" type="button" onClick={() => inputRef.current?.click()}>
+          <UploadCloud size={17} aria-hidden="true" />
           添加资料
         </button>
         <input
@@ -102,9 +102,9 @@ export function MaterialsView({
         />
       </header>
       {busy && (
-        <div className="upload-overlay">
+        <div className="upload-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="upload-dialog">
-            <Loader2 className="spin" size={36} />
+            <Loader2 className="spin" size={36} aria-hidden="true" />
             <strong>正在处理文件…</strong>
             <p>提取文本、生成地图、AI 翻译、制定题目</p>
             <div className="upload-steps">
@@ -115,7 +115,14 @@ export function MaterialsView({
                 </span>
               ))}
             </div>
-            <div className="upload-track">
+            <div
+              className="upload-track"
+              role="progressbar"
+              aria-label="资料处理进度"
+              aria-valuemin={1}
+              aria-valuemax={stepLabels.length}
+              aria-valuenow={stepIndex + 1}
+            >
               <span style={{ width: `${((stepIndex + 1) / stepLabels.length) * 100}%` }} />
             </div>
           </div>
@@ -123,14 +130,15 @@ export function MaterialsView({
       )}
       <div className="library-toolbar">
         <div className="search-box">
-          <FileSearch size={18} />
+          <FileSearch size={18} aria-hidden="true" />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索标题或主题"
+            aria-label="搜索标题或主题"
           />
         </div>
-        <div className="filter-pills">
+        <div className="filter-pills" role="group" aria-label="资料筛选">
           {[
             ["all", "全部"],
             ["paper", "论文"],
@@ -139,7 +147,9 @@ export function MaterialsView({
           ].map(([id, label]) => (
             <button
               key={id}
+              type="button"
               className={filter === id ? "active" : ""}
+              aria-pressed={filter === id}
               onClick={() => setFilter(id as typeof filter)}
             >
               {label}

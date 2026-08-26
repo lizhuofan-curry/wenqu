@@ -186,14 +186,14 @@ export function Dashboard({
         onRetryAll={onRetryAllSync}
       />
       <section className="quick-grid">
-        <button onClick={() => onNavigate("materials")}>
+        <button type="button" onClick={() => onNavigate("materials")}>
           <span className="quick-index">壹</span>
           <span className="quick-icon blue"><Library size={20} /></span>
           <span><strong>继续上次阅读</strong><small>{materials.length ? `${materials[0].title} · 约 ${materials[0].estimated_minutes} 分钟` : "先添加一份资料"}</small></span>
-          <em>{materials[0]?.estimated_minutes ?? "—"} 分钟</em>
+          <em>{materials[0] ? `${materials[0].estimated_minutes} 分钟` : "待添加"}</em>
           <ChevronRight size={17} />
         </button>
-        <button onClick={() => onNavigate("insights")}>
+        <button type="button" onClick={() => onNavigate("insights")}>
           <span className="quick-index">贰</span>
           <span className="quick-icon violet"><BarChart3 size={20} /></span>
           <span>
@@ -203,7 +203,7 @@ export function Dashboard({
           <em>8 分钟</em>
           <ChevronRight size={17} />
         </button>
-        <button onClick={() => onNavigate("misconceptions")}>
+        <button type="button" onClick={() => onNavigate("misconceptions")}>
           <span className="quick-index">叁</span>
           <span className="quick-icon coral"><BrainCircuit size={20} /></span>
           <span>
@@ -228,6 +228,7 @@ export function Dashboard({
           </div>
           <button
             className="drop-zone"
+            type="button"
             onClick={() => inputRef.current?.click()}
             disabled={busy}
           >

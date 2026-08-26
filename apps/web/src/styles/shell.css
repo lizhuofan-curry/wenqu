@@ -1,6 +1,7 @@
 .app-shell {
   display: grid;
   min-height: 100vh;
+  min-height: 100dvh;
   grid-template-columns: 240px minmax(0, 1fr);
 }
 
@@ -10,8 +11,9 @@
   top: 0;
   display: flex;
   height: 100vh;
+  height: 100dvh;
   flex-direction: column;
-  padding: 26px 20px 18px;
+  padding: 26px 20px max(18px, env(safe-area-inset-bottom));
   border-right: 1px solid var(--line);
   background: color-mix(in srgb, var(--paper-warm) 92%, transparent);
   backdrop-filter: blur(18px);
