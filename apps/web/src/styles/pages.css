@@ -1695,6 +1695,61 @@
   color: var(--indigo);
 }
 
+.diagnostic-route-position {
+  margin: 8px 0 0;
+  font-weight: 700;
+}
+
+.section-understanding {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--indigo) 5%, var(--card));
+}
+
+.section-understanding strong {
+  margin-right: auto;
+}
+
+.section-understanding button,
+.review-checkpoint button {
+  min-height: 44px;
+}
+
+.section-understanding button.active {
+  border-color: var(--indigo);
+  background: color-mix(in srgb, var(--indigo) 12%, var(--card));
+  color: var(--indigo);
+}
+
+.review-checkpoint ul {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0;
+  padding: 0;
+  list-style: none;
+}
+
+.review-checkpoint li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.review-checkpoint li > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 
 @media (max-width: 560px) {
   .diagnostic-flow {
@@ -1723,6 +1778,18 @@
 
   .diagnostic-study-route,
   .diagnostic-study-route > button {
+    width: 100%;
+  }
+
+  .section-understanding,
+  .review-checkpoint li,
+  .review-checkpoint li > div {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .section-understanding button,
+  .review-checkpoint button {
     width: 100%;
   }
 

@@ -13,10 +13,19 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
+import {
+  canStartDiagnosticQuiz,
+  diagnosticRoutePosition,
+  resolveInitialSectionIndex,
+  resolveRecommendedSectionIds,
+  transitionDiagnosticRoute,
+  updateDiagnosticReviewQueue,
+} from "../lib/diagnostic";
+import type { DiagnosticRouteState } from "../lib/diagnostic";
 import type { Material, Persona, ReviewTask, Session } from "../lib/types";
 import { ReviewComparison } from "./ReviewComparison";
 
-type Stage = "map" | "read" | "quiz" | "retell" | "result";
+type Stage = "map" | "read" | "review" | "quiz" | "retell" | "result";
 
 export type DiagnosticStudyPlan = {
   sectionId?: string | null;
@@ -39,10 +48,12 @@ type StudyFlowProps = {
 };
 
 const fullStageOrder: Stage[] = ["map", "read", "quiz", "retell", "result"];
+const checkpointStageOrder: Stage[] = ["map", "read", "review", "quiz", "retell", "result"];
 const reviewStageOrder: Stage[] = ["quiz", "retell", "result"];
 const stageLabels = {
   map: "材料地图",
   read: "双轨跟读",
+  review: "复核检查点",
   quiz: "理解测验",
   retell: "用话复述",
   result: "学习诊断",
@@ -58,49 +69,62 @@ export function StudyFlow({
   reviewTask,
   diagnosticPlan,
 }: StudyFlowProps) {
-  const recommendedSections = useMemo(() => {
-    const recommendedIds = new Set(diagnosticPlan?.recommendedPath ?? []);
-    return material.sections.filter((section) => recommendedIds.has(section.id));
-  }, [diagnosticPlan?.recommendedPath, material.sections]);
-  const requestedSectionIndex = diagnosticPlan?.sectionId
-    ? material.sections.findIndex((section) => section.id === diagnosticPlan.sectionId)
-    : -1;
-  const suggestedSectionIndex =
-    requestedSectionIndex >= 0
-      ? requestedSectionIndex
-      : recommendedSections.length > 0
-        ? material.sections.findIndex((section) => section.id === recommendedSections[0].id)
-        : -1;
-  const initialSectionIndex =
-    diagnosticPlan?.mode === "recommended" && suggestedSectionIndex >= 0 ? suggestedSectionIndex : 0;
+  const sectionIds = useMemo(() => material.sections.map((section) => section.id), [material.sections]);
+  const recommendedIds = useMemo(
+    () => resolveRecommendedSectionIds(diagnosticPlan?.recommendedPath ?? [], sectionIds),
+    [diagnosticPlan?.recommendedPath, sectionIds],
+  );
+  const recommendedSections = recommendedIds.map((sectionId) =>
+    material.sections.find((section) => section.id === sectionId)!,
+  );
+  const initialSectionIndex = resolveInitialSectionIndex(
+    diagnosticPlan?.mode ?? "beginning",
+    diagnosticPlan?.sectionId,
+    recommendedIds,
+    sectionIds,
+  );
   const [stage, setStage] = useState<Stage>(
     session.result
       ? "result"
       : reviewTask
         ? "quiz"
-        : diagnosticPlan?.mode === "recommended" && suggestedSectionIndex >= 0
+        : diagnosticPlan?.mode === "recommended" && recommendedIds.length > 0
           ? "read"
           : "map",
   );
   const [sectionIndex, setSectionIndex] = useState(initialSectionIndex);
+  const [routeState, setRouteState] = useState<DiagnosticRouteState>(
+    diagnosticPlan?.mode === "recommended" ? "following" : "manual",
+  );
+  const [reviewQueue, setReviewQueue] = useState<string[]>([]);
+  const [understoodSectionIds, setUnderstoodSectionIds] = useState<string[]>([]);
+  const [checkpointActive, setCheckpointActive] = useState(false);
+  const [quizStarted, setQuizStarted] = useState(Boolean(reviewTask || session.result));
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const titleRef = useRef<HTMLHeadingElement>(null);
   const sectionHeadingRef = useRef<HTMLHeadingElement>(null);
   const [retelling, setRetelling] = useState("");
   const activeSection = material.sections[sectionIndex];
   const result = session.result;
-  const activeStageOrder = reviewTask ? reviewStageOrder : fullStageOrder;
+  const routeFrozen = quizStarted;
+  const activeStageOrder = reviewTask
+    ? reviewStageOrder
+    : checkpointActive || stage === "review"
+      ? checkpointStageOrder
+      : fullStageOrder;
   const currentIndex = activeStageOrder.indexOf(stage);
   const quizComplete = material.questions.every((question) =>
     Boolean(answers[question.id]?.trim()),
   );
   const retellingReady = retelling.trim().length >= 20;
 
-  const recommendedSection = suggestedSectionIndex >= 0 ? material.sections[suggestedSectionIndex] : null;
+  const recommendedSection = recommendedSections[0] ?? null;
+  const routePosition = diagnosticRoutePosition(recommendedIds, activeSection?.id ?? "");
 
   const progress = useMemo(() => {
     if (stage === "result") return 100;
-    return Math.round(((currentIndex + 1) / activeStageOrder.length) * 100);
+    if (currentIndex <= 0) return 0;
+    return Math.round((currentIndex / (activeStageOrder.length - 1)) * 100);
   }, [activeStageOrder.length, currentIndex, stage]);
 
   useEffect(() => {
@@ -127,18 +151,65 @@ export function StudyFlow({
   }
 
   function goNext() {
+    if (stage === "read" && !reviewTask && reviewQueue.length > 0) {
+      setCheckpointActive(true);
+      setStage("review");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     const next = activeStageOrder[Math.min(currentIndex + 1, activeStageOrder.length - 1)];
+    if (next === "quiz") setQuizStarted(true);
     setStage(next);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  function openRecommendedSection(sectionId: string) {
+  function openSection(sectionId: string, routeEvent?: "route" | "manual") {
     const nextIndex = material.sections.findIndex((section) => section.id === sectionId);
     if (nextIndex < 0) return;
+    if (routeEvent) {
+      setRouteState((current) =>
+        transitionDiagnosticRoute(current, routeEvent === "route" ? "follow" : "manual", routeFrozen),
+      );
+    }
     setSectionIndex(nextIndex);
     setStage("read");
     window.scrollTo({ top: 0, behavior: "auto" });
     window.requestAnimationFrame(() => sectionHeadingRef.current?.focus());
+  }
+
+  function changeRoute(event: "follow" | "manual" | "dismiss") {
+    if (routeFrozen) return;
+    setRouteState((current) => transitionDiagnosticRoute(current, event));
+    if (event === "follow" && recommendedSection) openSection(recommendedSection.id, "route");
+  }
+
+  function markSection(needsReview: boolean) {
+    if (routeFrozen || !activeSection) return;
+    setReviewQueue((current) =>
+      updateDiagnosticReviewQueue(current, activeSection.id, needsReview),
+    );
+    setUnderstoodSectionIds((current) =>
+      needsReview
+        ? current.filter((sectionId) => sectionId !== activeSection.id)
+        : current.includes(activeSection.id)
+          ? current
+          : [...current, activeSection.id],
+    );
+  }
+
+  function removeReviewItem(sectionId: string) {
+    if (routeFrozen) return;
+    setReviewQueue((current) => updateDiagnosticReviewQueue(current, sectionId, false));
+    setUnderstoodSectionIds((current) =>
+      current.includes(sectionId) ? current : [...current, sectionId],
+    );
+  }
+
+  function startQuiz() {
+    if (!canStartDiagnosticQuiz(reviewQueue)) return;
+    setQuizStarted(true);
+    setStage("quiz");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
@@ -166,9 +237,14 @@ export function StudyFlow({
           {activeStageOrder.map((item, index) => (
             <button
               key={item}
-              className={index <= currentIndex ? "done" : ""}
+              className={index < currentIndex ? "done" : index === currentIndex ? "active" : ""}
+              aria-current={index === currentIndex ? "step" : undefined}
+              disabled={index > currentIndex && !session.result}
               onClick={() => {
-                if (index <= currentIndex || session.result) setStage(item);
+                if (index <= currentIndex || session.result) {
+                  if (item === "quiz") setQuizStarted(true);
+                  setStage(item);
+                }
               }}
             >
               <span>{index < currentIndex || stage === "result" ? <Check size={13} /> : index + 1}</span>
@@ -197,17 +273,27 @@ export function StudyFlow({
                 : "诊断建议：从材料地图建立全局认识"}
             </strong>
             <p>
-              {diagnosticPlan.mode === "recommended"
-                ? "已按你的选择打开建议段落。路线可随时撤销或改选，不会强制跳过其他章节。"
-                : "你选择了从头开始。建议仍保留且可随时采用或撤销，不会强制跳过任何章节。"}
+              {routeFrozen
+                ? "测验已经开始，路线已冻结；这不会改变正式评分载荷。"
+                : routeState === "following"
+                  ? "正在按建议浏览；可随时停止或手动改选，不会强制跳过其他章节。"
+                  : routeState === "manual"
+                    ? "你正在自由浏览全部章节；建议仍保留，可随时回到建议路线。"
+                    : "你已停止按建议浏览；全部章节仍可访问，也可随时恢复建议。"}
             </p>
+            {routePosition && routeState === "following" && (
+              <p className="diagnostic-route-position" role="status">
+                建议位置 {routePosition.current} / {routePosition.total}
+              </p>
+            )}
             {recommendedSections.length > 0 && (
               <nav className="diagnostic-study-route" aria-label="建议章节顺序">
                 {recommendedSections.map((section, index) => (
                   <button
                     key={section.id}
                     type="button"
-                    onClick={() => openRecommendedSection(section.id)}
+                    onClick={() => openSection(section.id, "route")}
+                    disabled={routeFrozen}
                     aria-current={activeSection.id === section.id && stage === "read" ? "location" : undefined}
                   >
                     {index + 1}. {section.title}
@@ -216,12 +302,12 @@ export function StudyFlow({
               </nav>
             )}
           </div>
-          {recommendedSection && (
+          {!routeFrozen && recommendedSection && (
             <button
               type="button"
-              onClick={() => openRecommendedSection(recommendedSection.id)}
+              onClick={() => changeRoute(routeState === "following" ? "dismiss" : "follow")}
             >
-              打开建议段落
+              {routeState === "following" ? "停止按建议" : "回到建议路线"}
             </button>
           )}
         </aside>
@@ -268,7 +354,7 @@ export function StudyFlow({
               <button
                 key={section.id}
                 className={index === sectionIndex ? "active" : ""}
-                onClick={() => setSectionIndex(index)}
+                onClick={() => openSection(section.id, "manual")}
               >
                 <span>{index + 1}</span>
                 {section.title}
@@ -310,9 +396,28 @@ export function StudyFlow({
               <div className="persona-says">{persona.accent}</div>
             </article>
           </div>
+          {diagnosticPlan && !reviewTask && !routeFrozen && (
+            <div className="section-understanding" aria-label="本节理解状态">
+              <strong>这一节现在怎么样？</strong>
+              <button
+                type="button"
+                className={understoodSectionIds.includes(activeSection.id) ? "active" : ""}
+                onClick={() => markSection(false)}
+              >
+                已理解
+              </button>
+              <button
+                type="button"
+                className={reviewQueue.includes(activeSection.id) ? "active" : ""}
+                onClick={() => markSection(true)}
+              >
+                仍需复核
+              </button>
+            </div>
+          )}
           <div className="section-pager">
             <button
-              onClick={() => setSectionIndex((value) => Math.max(0, value - 1))}
+              onClick={() => openSection(material.sections[sectionIndex - 1].id, "manual")}
               disabled={sectionIndex === 0}
             >
               <ArrowLeft size={16} />
@@ -322,17 +427,56 @@ export function StudyFlow({
               {sectionIndex + 1} / {material.sections.length}
             </span>
             {sectionIndex < material.sections.length - 1 ? (
-              <button onClick={() => setSectionIndex((value) => value + 1)}>
+              <button onClick={() => openSection(material.sections[sectionIndex + 1].id, "manual")}>
                 下一节
                 <ArrowRight size={16} />
               </button>
             ) : (
-              <button className="accent" onClick={goNext}>
+              <button
+                className="accent"
+                onClick={() => {
+                  if (reviewQueue.length > 0) {
+                    setCheckpointActive(true);
+                    setStage("review");
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  } else {
+                    startQuiz();
+                  }
+                }}
+              >
                 我读完了，开始测验
                 <ArrowRight size={16} />
               </button>
             )}
           </div>
+        </section>
+      )}
+
+      {stage === "review" && (
+        <section className="study-stage review-checkpoint" aria-labelledby="review-checkpoint-title">
+          <div className="stage-intro">
+            <p className="eyebrow">进入测验前</p>
+            <h2 id="review-checkpoint-title">先复核你标记的章节</h2>
+            <p>这是本次会话内的自选清单，不会写入档案或评分载荷。</p>
+          </div>
+          <ul>
+            {reviewQueue.map((sectionId) => {
+              const section = material.sections.find((item) => item.id === sectionId);
+              if (!section) return null;
+              return (
+                <li key={sectionId}>
+                  <strong>{section.title}</strong>
+                  <div>
+                    <button type="button" onClick={() => openSection(sectionId, "manual")}>查看章节</button>
+                    <button type="button" onClick={() => removeReviewItem(sectionId)}>已复核，移除</button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+          <StageAction onClick={startQuiz} disabled={!canStartDiagnosticQuiz(reviewQueue)}>
+            {reviewQueue.length > 0 ? `还有 ${reviewQueue.length} 节待复核` : "完成复核，开始测验"}
+          </StageAction>
         </section>
       )}
 
