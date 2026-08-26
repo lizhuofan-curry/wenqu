@@ -5,7 +5,7 @@
 [主网站 · 在线体验问渠](https://wenqu-reading-room.vercel.app/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/)
 
 [![CI](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-v.4-3975f6)
+![Version](https://img.shields.io/badge/version-v.5-3975f6)
 ![React](https://img.shields.io/badge/React-19-61dafb)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python-0f9d79)
 

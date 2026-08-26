@@ -149,6 +149,7 @@ def test_health_response_has_security_headers(api_client):
     response = api_client.get("/api/health")
 
     assert response.status_code == 200
+    assert response.json()["version"] == "v.5"
     assert response.headers["cache-control"] == "no-store"
     assert response.headers["pragma"] == "no-cache"
     assert response.headers["x-content-type-options"] == "nosniff"

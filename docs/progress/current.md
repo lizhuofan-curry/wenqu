@@ -7,7 +7,8 @@
 
 - 已严格按精确提交快照执行生产迁移 `202608250002_transfer_tasks.sql`、`202608250003_retention_measurements.sql`、`202608250004_diagnostic_attempts.sql`；迁移账本校验和与对应仓库快照一致。既有 `study_records` 保持 11 条，历史可信标记仍为 0，没有删除或回填旧记录。
 - PR #34–#38 已依次使用普通 merge 合入 `main`：合并提交分别为 `ff530896`、`e679c9a5`、`f28734d5`、`6083becd`、`24757a6a`。每一阶段均等待新的 PR CI 与 main push CI 通过后才进入下一步。
-- 最新应用提交 `24757a6a` 已从 Git 精确归档发布到 Vercel Production；部署 `dpl_93DK91UDzqWrzXGG2PKU2h9V6CvK` 为 READY，主域名 `https://wenqu-reading-room.vercel.app` 已绑定。最终 main CI 运行 `32916486720` 的 Web/API 两项均成功。
+- PR #38 功能提交 `24757a6a` 已从 Git 精确归档发布到 Vercel Production；首次功能部署 `dpl_93DK91UDzqWrzXGG2PKU2h9V6CvK` 为 READY，主域名 `https://wenqu-reading-room.vercel.app` 已绑定。对应 main CI 运行 `32916486720` 的 Web/API 两项均成功。
+- 最终发布验收发现 README 徽章与两个 API 健康入口仍报告旧版本；现已统一为 `v.5`，并为本地 FastAPI 与 Vercel 入口补充版本断言，避免文档版本领先运行时元数据。
 - 002 真实验收：一次性账号完成 12 分可信基线、错因迁移题生成与评分、相同请求重复恢复；数据库中仅一条任务和一条迁移归档。账号删除后恢复到 2 个账号、11 条学习记录、0 个迁移任务。
 - 003 真实验收：新基线具备 `server_verified_at` 与 rubric fingerprint，D1 尚差约 24 小时时没有提前创建 claim；一次性账号删除后计数恢复。保持率基础设施已上线，但首个真实 D1 样本仍需等待满 24 小时，当前不宣称保持趋势或因果提升。
 - 004 真实验收：诊断 prepare 幂等、公开载荷只含 3 道题且不泄露隐藏规则；evaluate 完成后重复提交返回同一结果，重新读取仍为 completed。数据库仅一条诊断尝试，账号删除后恢复到 0 条。
@@ -16,7 +17,7 @@
 
 ### 当前阶段
 
-**阶段：v.5 的 PR #34–#38、生产迁移 002–004、Vercel Production 发布与分阶段真实验收均已完成；最终 README、进展与复盘文档已更新并进入 GitHub 发布门禁。**
+**阶段：v.5 的 PR #34–#38、生产迁移 002–004、Vercel Production 发布与分阶段真实验收均已完成；README、进展与复盘文档已合入 main，健康接口与版本徽章已同步为 v.5。**
 
 ### 当前最高优先级
 
