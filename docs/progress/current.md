@@ -3,26 +3,24 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
-## 2026-08-26｜证据笔记合入生产安全链
+## 2026-08-26｜v.5 堆叠发布与生产验收完成
 
-- 新增 `apps/web/src/lib/evidenceNotes.ts` 与专项测试：笔记采用 localStorage schema v1，按稳定登录用户 ID 或 `anonymous` 命名空间隔离；匿名笔记不会在登录后自动认领。正文、账号卡片数和来源摘录均有限制，损坏或旧 schema 安全降级。
-- 新增 `EvidenceNoteDialog.tsx` 与 `EvidenceNotesPanel.tsx`，并接入 `App.tsx`、`StudyFlow.tsx`、`MaterialsView.tsx`、`InsightsView.tsx` 和 `pages.css`。材料地图、双轨阅读与普通学习结果页可创建；闭卷测验、复述和延迟复习不提供入口。
-- 卡片只允许“我的理解 / 待核对”，来源仅为创建时未认证定位快照，不提供“论文事实”状态，也不进入 evaluate、archive、`study_records`、掌握度、保持率或迁移评分载荷。
-- 集中面板支持搜索、按材料筛选、编辑、删除、复制 Markdown、导出 JSON/Markdown；材料被删除后笔记不级联删除。“原材料已删除”和“原位置可能已变化”采用独立状态与文案，界面明确提示仅存本浏览器、不云同步。
-- 安全复审发现本地恶意对象的未知根字段可能随对象展开进入导出，现已改为读取与 JSON 导出均逐字段白名单重建；`score`、`answer_guide`、`token` 和 `source.hidden_rubric` 不会进入内存或导出。
-- 最终堆叠头完整 `pnpm check` 退出码为 **0**：TypeScript、Vite Production build（**1810 modules**）、保持率 8 个场景、诊断 35 项断言、证据笔记 50 项断言、两套 Ruff/Python 编译与完整 API **97 passed**；仅保留 1 条既有 Starlette/httpx 第三方弃用警告。
-- Playwright + Edge headless 真实走通桌面与 390px：创建、编辑、搜索、筛选、Markdown/JSON 导出、删除、闭卷入口隔离、Tab/Shift+Tab 焦点循环、Esc 回焦均通过；三处窄屏横向溢出为 0。浏览器发现并修复 `map:* / result:*` 合法位置被误报陈旧，以及移动端导航图标缺少可访问名称。截图保存在本地 `tmp/evidence-browser-*.png`，因 Windows helper 错误未做像素级人工目视，不把 DOM/截图生成冒充视觉审稿。
-- 安全终审与学习有效性终审均无阻塞：账号/匿名命名空间、导出白名单、闭卷阶段和正式评分/档案隔离通过；学习契约已按实际 `schema_version/id/owner_id/content/source` 与 JSON 导出字段回写，结构化 PDF 页、公式和 Figure 定位仍明确为未来增强。
-- 已以普通 merge 将通过 GitHub CI 的 PR #37 提交 `58bb685` 合入 PR #38 本地历史；生产迁移安全修正与永久检查器已经传播到最终堆叠头。证据笔记本身仍不新增数据库迁移，也不具备跨设备同步。
-- PR #38 当前 **OPEN、未合并、未发布 Production**，等待提交推送后的新 GitHub API/Web CI。
+- 已严格按精确提交快照执行生产迁移 `202608250002_transfer_tasks.sql`、`202608250003_retention_measurements.sql`、`202608250004_diagnostic_attempts.sql`；迁移账本校验和与对应仓库快照一致。既有 `study_records` 保持 11 条，历史可信标记仍为 0，没有删除或回填旧记录。
+- PR #34–#38 已依次使用普通 merge 合入 `main`：合并提交分别为 `ff530896`、`e679c9a5`、`f28734d5`、`6083becd`、`24757a6a`。每一阶段均等待新的 PR CI 与 main push CI 通过后才进入下一步。
+- 最新应用提交 `24757a6a` 已从 Git 精确归档发布到 Vercel Production；部署 `dpl_93DK91UDzqWrzXGG2PKU2h9V6CvK` 为 READY，主域名 `https://wenqu-reading-room.vercel.app` 已绑定。最终 main CI 运行 `32916486720` 的 Web/API 两项均成功。
+- 002 真实验收：一次性账号完成 12 分可信基线、错因迁移题生成与评分、相同请求重复恢复；数据库中仅一条任务和一条迁移归档。账号删除后恢复到 2 个账号、11 条学习记录、0 个迁移任务。
+- 003 真实验收：新基线具备 `server_verified_at` 与 rubric fingerprint，D1 尚差约 24 小时时没有提前创建 claim；一次性账号删除后计数恢复。保持率基础设施已上线，但首个真实 D1 样本仍需等待满 24 小时，当前不宣称保持趋势或因果提升。
+- 004 真实验收：诊断 prepare 幂等、公开载荷只含 3 道题且不泄露隐藏规则；evaluate 完成后重复提交返回同一结果，重新读取仍为 completed。数据库仅一条诊断尝试，账号删除后恢复到 0 条。
+- PR #37 的可撤销自适应路线已进入生产主 JS；PR #38 的证据笔记创建、集中面板、Markdown/JSON 导出和永久删除确认均已从生产构件核验。证据笔记仍只保存在当前浏览器，不进入评分，也不跨设备同步。
+- 本轮使用的临时账号与生产验收数据已全部清理；临时环境配置副本均已删除，原始本地配置保留且未输出任何密钥、令牌或数据库连接地址。
 
 ### 当前阶段
 
-**阶段：最终堆叠 PR #38 已在本地合入 #37 的生产安全历史并通过完整门禁；等待提交推送与新 GitHub CI，#34–#38 均尚未合并或发布。**
+**阶段：v.5 的 PR #34–#38、生产迁移 002–004、Vercel Production 发布与分阶段真实验收均已完成；最终 README、进展与复盘文档已更新并进入 GitHub 发布门禁。**
 
 ### 当前最高优先级
 
-提交并推送 PR #38，等待新 CI；随后严格按精确快照执行 002→003→004 生产迁移，并按 #34→#38 顺序合并、部署和验收。完成本次发布及 README 更新前不启动语音复述。
+等待首个可信基线满 24 小时后完成真实 D1 保持率验收，并继续保持“样本不足不展示趋势”的边界。语音复述与多材料专题暂不自动启动，等待用户另行确认。
 
 最后更新：2026-08-26
 
