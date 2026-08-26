@@ -10,17 +10,17 @@
 - agent-browser 在虚构超长中英文标题、无空格标识符和来源定位下验证 390、360、320px：三种宽度均为 `documentWidth = viewport`、可见元素越界 0；浅色与深色/减少动画均通过。证据笔记区域 axe 违规由 1 降为 0，浏览器运行错误为 0。
 - 完整前端证据：TypeScript、Vite Production build（1810 modules）、保持率 8 个场景、诊断 35 项断言、证据笔记 50 项断言全部通过；两套 Ruff 与 Python 编译通过，完整 API 97 passed，仅保留 1 条既有 Starlette/httpx 第三方弃用警告。
 - 手机访问排查：生产首页对 Android UA 返回 HTTP 200，`/api/health` 返回 `status=ok, version=v.5`，最近一小时未发现可用的错误日志证据；当前证据不支持“应用宕机”结论。电脑 DNS 使用 Fake-IP 路径，不能代表手机蜂窝网络。
-- 已把 `wenqu.zhuofan.me` 登记到现有 Vercel 项目，但阿里云 DNS 尚未配置，Vercel 明确显示 `invalid-configuration`。待 DNS 提供商新增 `CNAME wenqu → 3efa259471e83858.vercel-dns-017.com.` 后才能验证、签发访问链路并作为手机主入口；未生效前不得把该域名写成可用地址。
+- `wenqu.zhuofan.me` 的阿里云 CNAME 已传播到 Google 与 Cloudflare 公共解析，Vercel verify 返回 `configured-correctly`。首次验证后域名仍无独立证书、HTTPS 握手失败；已为该子域单独签发自动续期证书，随后 Android UA 首页返回 HTTP 200，`/api/health` 返回 `status=ok, version=v.5`。
 - PR [#41](https://github.com/lizhuofan-curry/wenqu/pull/41) 的 Web/API CI 均通过，已以普通 merge 合入 `main`，合并提交为 `2881544a08562aae642692be2a9cbc9f359abdbb`。该精确快照已发布到 Vercel Production，部署 `dpl_3vsZfsKUppNrjvP7f9FtxcbmNzyC` 为 READY。
 - 发布后再次在真实生产“学习洞察”页注入虚构极限文本验收：390、360、320px 均无可见元素越界；明暗主题 axe 违规 0、浏览器运行错误 0。生产 CSS 已确认包含 `text-size-adjust`、长词断行和高对比朱砂变量；Android UA 访问主域返回 HTTP 200。
 
 ### 当前阶段
 
-**阶段：移动端文字修复已通过 PR #41、GitHub CI、Vercel Production 构建和生产真实浏览器验收；现有 Vercel 主站正常，手机备用自定义域仍等待阿里云 DNS 记录。**
+**阶段：移动端文字修复与自定义访问链路均已上线；PR、CI、Vercel Production、公共 DNS、独立 HTTPS 证书和受控手机视口均已验证。**
 
 ### 当前最高优先级
 
-在阿里云 DNS 新增 `CNAME wenqu → 3efa259471e83858.vercel-dns-017.com.`，待公共解析与 Vercel verify 通过后完成手机蜂窝/Wi-Fi 双链路真实验收。该访问问题完成前暂停语音复述和多材料专题。
+请项目所有者分别使用一台真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐最后的物理终端双链路证据；受控浏览器 390/360/320px 均已返回正确页面且无可见元素越界。随后再决定是否恢复语音复述和多材料专题。
 
 最后更新：2026-08-26
 

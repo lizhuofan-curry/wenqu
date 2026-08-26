@@ -2,7 +2,7 @@
 
 > 问渠不替你读，而是陪你把知识变成自己的话。
 
-[主网站 · 在线体验问渠](https://wenqu-reading-room.vercel.app/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/)
+[主网站 · 在线体验问渠](https://wenqu-reading-room.vercel.app/) · [自定义入口](https://wenqu.zhuofan.me/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/)
 
 [![CI](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml/badge.svg)](https://github.com/lizhuofan-curry/wenqu/actions/workflows/ci.yml)
 ![Version](https://img.shields.io/badge/version-v.5-3975f6)
@@ -22,7 +22,7 @@
 | 适合谁 | 正在读论文、专业课材料或长文档，希望真正复述出来的学习者 |
 | 核心差异 | 回答必须回到原文证据；先暴露理解缺口，再给诊断和下一步 |
 | 当前版本 | v.5：错因迁移检验、可信延迟保持率、课前诊断与可撤销自适应路线、本地证据笔记卡、服务端可信评分归档 |
-| 在线入口 | [主网站](https://wenqu-reading-room.vercel.app/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/) |
+| 在线入口 | [主网站](https://wenqu-reading-room.vercel.app/) · [自定义入口](https://wenqu.zhuofan.me/) · [GitHub Pages 静态演示](https://lizhuofan-curry.github.io/wenqu/) |
 
 v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸暖白/墨色夜读双主题、期刊纸张严格轨、暖色便签陪读轨、稿纸复述、朱砂批注诊断。v.4 在此基础上上线 Vercel 同域 FastAPI、DeepSeek 语义评分、上传材料学习包、冷启动真实性保护与 D1/D3/D7 间隔复习。v.5 继续上线错因迁移检验、可信延迟保持率、课前诊断、可撤销自适应路线和浏览器本地证据笔记卡。登录用户的学习记录由评分接口使用服务端结果直接归档，客户端提交的分数或诊断结构不作为数据库真值。
 
@@ -122,6 +122,7 @@ v.3 "纸上书房"以东方人文色谱与现代学习工作台结合：宣纸�
 | 地址 | 说明 |
 |---|---|
 | https://wenqu-reading-room.vercel.app/ | **主网站**：生产 API、上传材料、AI 评分、D1/D3/D7 复习与跨设备档案 |
+| https://wenqu.zhuofan.me/ | **自定义入口**：与主网站指向同一 Vercel Production，已配置独立自动续期 HTTPS 证书 |
 | https://lizhuofan-curry.github.io/wenqu/ | GitHub Pages 静态演示：仅内置演示学习流 |
 
 主网站使用同域生产 API；DeepSeek 密钥仅保存在 Vercel 服务端环境变量，绝不进入浏览器或仓库。GitHub Pages 是静态演示，不承诺上传与在线评分。未配置 Supabase 时，账号与记录保存在当前浏览器；配置后自动升级为真实邮箱账号和跨设备档案。
