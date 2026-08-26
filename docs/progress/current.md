@@ -3,6 +3,26 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
+## 2026-08-26｜前端加载与可访问性优化上线
+
+- 字体加载从 CSS `@import` 改为 HTML `<link rel="stylesheet">` 并预连接 `fonts.googleapis.com` / `fonts.gstatic.com`，消除串行 CSS 请求链；`theme-color` 按明暗主题分别给出 `#faf8f3` 与 `#16181d`。
+- 可访问性补齐：主导航补 `aria-current="page"`，移动菜单补 `aria-controls`/`aria-expanded`，主题切换补 `aria-pressed`，上传遮罩补 `role="status"`/`aria-live="polite"`，进度条补 `role="progressbar"` 与 aria 数值；表单控件 reset 与 focus-visible 覆盖 `select`，交互按钮统一 `type="button"`。关键 `100vh` 均增加 `100dvh` fallback，侧栏底部适配 `env(safe-area-inset-bottom)`。
+- 提交 `7d80805d62dfd0f634529d62cb85d9c951602481` 已推送到 GitHub `main`；main CI 运行 `32964067584` 的 Web/API 均成功。
+- 按精确干净快照边界（`git archive`，无 Git 元数据）发布 Vercel Production：部署 `dpl_DxTfHXgQbVUfaKAUpR19eafxYveR` 为 READY，`https://wenqu.zhuofan.me/` 与备用域均返回 HTTP 200，`/api/health` 返回 `status=ok, version=v.5`；生产 HTML 已含字体 preconnect/link 与双 `theme-color`，资源更新为 `index-CMfAxCdI.js`。
+- 生产浏览器验收：InAppBrowser 桌面首屏完整渲染侧栏、主导航与仪表板；390/360/320px 三档移动视口 `scrollWidth = innerWidth`、可见元素越界 0，验收后已清除设备模拟并关闭标签页。
+
+### 当前阶段
+
+**阶段：前端加载与可访问性优化已上线；提交、CI、Vercel Production 与三档移动视口均已验证。**
+
+### 当前最高优先级
+
+请项目所有者分别使用一台真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐最后的物理终端双链路证据；受控浏览器验收已覆盖 390/360/320px 且无越界。
+
+最后更新：2026-08-26
+
+
+
 ## 2026-08-26｜本地主线与 GitHub main 对齐
 
 - 已刷新 `origin/main` 并确认远端基线为 `e16de052f8ccb862ea47eb145659b5227fd143f6`。

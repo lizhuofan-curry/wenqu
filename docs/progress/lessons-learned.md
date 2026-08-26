@@ -874,3 +874,14 @@
 - 根因：本地主线长期没有按远端合并节奏更新，历史提交与 GitHub PR 合并历史形成双向分叉；工作区记录又尚未进入提交。
 - 解决：先把两份文档改动保存为可恢复 stash，确认工作区干净；将旧本地 `main` 重命名为 `backup/main-pre-sync-20260826`，从 `origin/main` 重建新的跟踪分支，再恢复并按最新事实合并追加型文档。过时阶段描述不覆盖远端已完成状态。
 - 预防：日常开发从最新 `origin/main` 建立 `codex/` 分支；合并 PR 后及时 fast-forward 本地 `main`。发现双向分叉时先保留旧分支和未提交补丁，再重建跟踪分支，不使用强推或硬重置消除差异。
+
+## 2026-08-26｜前端加载与可访问性优化
+
+- 本轮开始前已完整复读本文件；改动限于前端加载性能、可访问性与移动端视口适配，没有修改后端、数据库或证据引用口径，也没有输出任何密钥、令牌或完整连接地址。
+
+### 110. Git Bash 中只有 node 在 PATH 时，npm/npx/pnpm 需要用同目录全路径调用
+
+- 现象：Git Bash 里 `which node` 能找到运行时（`.../runtime/node/node.exe`），但直接执行 `npm`、`npx`、`pnpm`、`corepack` 均提示命令不存在，前端检查与 Vercel CLI 无法启动。
+- 根因：该运行时目录下的 `npm.cmd`/`npx.cmd` 等 shim 没有加入 PATH；node 可用是偶然路径暴露，不代表整个 Node 工具链已注册。
+- 解决：先取 `NODE_DIR="$(dirname "$(which node)")"`，之后所有 Node 脚本统一用 `"$NODE_DIR/npx.cmd"` 或 `"$NODE_DIR/npm.cmd"` 全路径调用，不改动全局 PATH，也不安装第二份 Node。
+- 预防：本轮及以后所有 Node 相关命令先打印 `which node` 确认运行时位置，再派生同目录 shim 全路径；把“node 可用”与“npm/npx 可用”当作两个独立事实分别验证。
