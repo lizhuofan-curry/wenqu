@@ -1674,6 +1674,15 @@
   background: color-mix(in srgb, var(--indigo) 7%, var(--card));
 }
 
+.diagnostic-study-note > div,
+.diagnostic-study-note strong,
+.diagnostic-study-note p,
+.diagnostic-route li,
+.diagnostic-route-summary > p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .diagnostic-study-route {
   display: flex;
   flex-wrap: wrap;
@@ -1682,12 +1691,15 @@
 }
 
 .diagnostic-study-route button {
+  max-width: 100%;
+  min-width: 0;
   min-height: 44px;
   padding: 9px 12px;
   border: 1px solid var(--line);
   background: var(--card);
   color: var(--ink);
   text-align: left;
+  overflow-wrap: anywhere;
 }
 
 .diagnostic-study-route button[aria-current="location"] {
@@ -1971,7 +1983,7 @@
   padding: 6px 7px;
   border-radius: 2px 8px 8px 2px;
   background: var(--cinnabar-soft);
-  color: var(--cinnabar);
+  color: var(--cinnabar-ink);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: .12em;
@@ -2083,6 +2095,7 @@
 
 .evidence-notes-panel {
   position: relative;
+  min-width: 0;
   margin-top: 24px;
   overflow: hidden;
 }
@@ -2169,7 +2182,9 @@
 }
 
 .evidence-note-heading h3 {
+  min-width: 0;
   margin: 4px 0;
+  overflow-wrap: anywhere;
 }
 
 .evidence-note-heading > span {
@@ -2188,11 +2203,18 @@
 
 .evidence-note-source {
   display: grid;
+  min-width: 0;
   gap: 4px;
   padding-top: 12px;
   border-top: 1px solid var(--line);
   color: var(--ink-soft);
   font-size: 11px;
+}
+
+.evidence-note-source > *,
+.evidence-panel-header p {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .evidence-note-source em,

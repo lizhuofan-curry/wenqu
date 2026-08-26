@@ -157,7 +157,7 @@ export function Shell({
                       : "登录后可跨设备查看"}
             </small>
           </div>
-          <em>v.4</em>
+          <em>v.5</em>
         </div>
       </aside>
 
