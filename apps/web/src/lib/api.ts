@@ -1,4 +1,6 @@
 import type {
+  DiagnosticAttempt,
+  DiagnosticAnswer,
   Material,
   MaterialSummary,
   Persona,
@@ -219,6 +221,32 @@ export const api = {
               sections: [],
             },
     ),
+  prepareDiagnostic: (
+    materialId: string,
+    expectedUserId: string,
+    clientRequestId: string,
+  ) =>
+    request<DiagnosticAttempt>("/diagnostics/prepare", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        material_id: materialId,
+        expected_user_id: expectedUserId,
+        client_request_id: clientRequestId,
+      }),
+    }),
+  diagnostic: (id: string) =>
+    request<DiagnosticAttempt>(`/diagnostics/${encodeURIComponent(id)}`),
+  evaluateDiagnostic: (
+    id: string,
+    expectedUserId: string,
+    answers: DiagnosticAnswer[],
+  ) =>
+    request<DiagnosticAttempt>(`/diagnostics/${encodeURIComponent(id)}/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_user_id: expectedUserId, answers }),
+    }),
   archive: async () =>
     (await loadCloudArchive()) ?? loadLocalArchive(),
   retryArchive: (retryToken: string, expectedUserId: string) =>

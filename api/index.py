@@ -34,6 +34,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path as FilePath
 from pydantic import BaseModel, Field
 
+from api.diagnostic_routes import register_diagnostic_routes
 from api.transfer_core import material_rubric_fingerprint
 from api.transfer_routes import register_transfer_routes
 
@@ -1852,4 +1853,13 @@ register_transfer_routes(
     require_ai_quota=_require_ai_quota,
     up_study_record=_supa_up_study_record,
     sign_archive_retry=_sign_archive_retry,
+)
+
+register_diagnostic_routes(
+    app,
+    supa_ok=_supa_ok,
+    supa_get=_supa_get,
+    supa_rpc=_supa_rpc,
+    auth_user=_auth_user,
+    get_material_for_user=_get_material_for_user,
 )

@@ -65,7 +65,8 @@ def main() -> None:
                         'materials',
                         'ai_quota_usage',
                         'transfer_tasks',
-                        'retention_measurement_claims'
+                        'retention_measurement_claims',
+                        'diagnostic_attempts'
                       )
                     order by c.relname
                     """
@@ -82,7 +83,8 @@ def main() -> None:
                         'materials',
                         'ai_quota_usage',
                         'transfer_tasks',
-                        'retention_measurement_claims'
+                        'retention_measurement_claims',
+                        'diagnostic_attempts'
                       )
                     order by tablename, policyname
                     """
@@ -398,6 +400,106 @@ def main() -> None:
                 retention_claim_acl = set(cursor.fetchall())
                 cursor.execute(
                     """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_class c
+                    cross join lateral aclexplode(
+                      coalesce(c.relacl, acldefault('r', c.relowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where c.oid = 'public.diagnostic_attempts'::regclass
+                      and coalesce(grantee_role.rolname, 'PUBLIC') in (
+                        'PUBLIC', 'anon', 'authenticated', 'service_role'
+                      )
+                    """
+                )
+                diagnostic_table_acl = set(cursor.fetchall())
+                cursor.execute(
+                    """
+                    select contype, pg_get_constraintdef(oid)
+                    from pg_constraint
+                    where conrelid = 'public.diagnostic_attempts'::regclass
+                    order by contype, conname
+                    """
+                )
+                diagnostic_constraints = cursor.fetchall()
+                cursor.execute(
+                    """
+                    select
+                      x.indexname,
+                      x.indexdef,
+                      i.indisvalid,
+                      i.indisready,
+                      i.indisunique
+                    from pg_indexes x
+                    join pg_class c on c.relname = x.indexname
+                    join pg_namespace n on n.oid = c.relnamespace
+                      and n.nspname = x.schemaname
+                    join pg_index i on i.indexrelid = c.oid
+                    where x.schemaname = 'public'
+                      and x.tablename = 'diagnostic_attempts'
+                    """
+                )
+                diagnostic_indexes = {
+                    row[0]: row[1:] for row in cursor.fetchall()
+                }
+                cursor.execute(
+                    """
+                    select
+                      p.proname,
+                      p.prosecdef,
+                      p.proconfig,
+                      owner_role.rolname,
+                      pg_get_functiondef(p.oid)
+                    from pg_proc p
+                    join pg_roles owner_role on owner_role.oid = p.proowner
+                    where p.oid in (
+                      to_regprocedure(
+                        'public.prepare_diagnostic_attempt(text,uuid,uuid,text,text,text,integer,jsonb)'
+                      ),
+                      to_regprocedure(
+                        'public.claim_diagnostic_attempt(text,uuid,text,jsonb)'
+                      ),
+                      to_regprocedure(
+                        'public.complete_diagnostic_attempt(text,uuid,text,jsonb)'
+                      )
+                    )
+                    order by p.proname
+                    """
+                )
+                diagnostic_functions = {
+                    row[0]: row[1:] for row in cursor.fetchall()
+                }
+                cursor.execute(
+                    """
+                    select
+                      p.proname,
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_proc p
+                    cross join lateral aclexplode(
+                      coalesce(p.proacl, acldefault('f', p.proowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where p.oid in (
+                      to_regprocedure(
+                        'public.prepare_diagnostic_attempt(text,uuid,uuid,text,text,text,integer,jsonb)'
+                      ),
+                      to_regprocedure(
+                        'public.claim_diagnostic_attempt(text,uuid,text,jsonb)'
+                      ),
+                      to_regprocedure(
+                        'public.complete_diagnostic_attempt(text,uuid,text,jsonb)'
+                      )
+                    )
+                    """
+                )
+                diagnostic_function_acl = set(cursor.fetchall())
+                cursor.execute(
+                    """
                     select exists (
                       select 1
                       from pg_trigger
@@ -431,6 +533,7 @@ def main() -> None:
 
     expected_tables = [
         ("ai_quota_usage", True, True),
+        ("diagnostic_attempts", True, True),
         ("materials", True, True),
         ("profiles", True, True),
         ("retention_measurement_claims", True, True),
@@ -803,6 +906,155 @@ def main() -> None:
             f"{sorted(retention_execute_grantees)}"
         )
 
+    expected_diagnostic_table_acl = {("service_role", "SELECT")}
+    if diagnostic_table_acl != expected_diagnostic_table_acl:
+        raise RuntimeError(
+            "diagnostic_attempts table privileges are unsafe: "
+            f"{sorted(diagnostic_table_acl)}"
+        )
+    normalized_diagnostic_constraints = [
+        (constraint_type, _normalize_expression(definition))
+        for constraint_type, definition in diagnostic_constraints
+    ]
+    required_diagnostic_constraints = (
+        ("p", "primarykey(id)"),
+        (
+            "f",
+            "foreignkey(user_id)referencesauth.users(id)ondeletecascade",
+        ),
+        ("u", "unique(user_id,client_request_id)"),
+        (
+            "u",
+            "unique(user_id,material_id,material_revision,diagnostic_version)",
+        ),
+    )
+    for constraint_type, fragment in required_diagnostic_constraints:
+        if not any(
+            actual_type == constraint_type and fragment in definition
+            for actual_type, definition in normalized_diagnostic_constraints
+        ):
+            raise RuntimeError(
+                "diagnostic_attempts constraint is missing: "
+                f"{constraint_type}:{fragment}"
+            )
+    diagnostic_check_definitions = " ".join(
+        definition
+        for constraint_type, definition in normalized_diagnostic_constraints
+        if constraint_type == "c"
+    )
+    required_diagnostic_checks = (
+        "id",
+        "dg_[0-9a-f]{32}",
+        "material_id",
+        "senet-cvpr-2018",
+        "material_revision",
+        "diagnostic_version",
+        "status",
+        "ready",
+        "evaluating",
+        "completed",
+    )
+    if not all(
+        fragment in diagnostic_check_definitions
+        for fragment in required_diagnostic_checks
+    ):
+        raise RuntimeError("diagnostic_attempts check constraints are incomplete.")
+
+    required_diagnostic_indexes = {
+        "diagnostic_attempts_pkey",
+        "diagnostic_attempts_request_unique",
+        "diagnostic_attempts_first_baseline_unique",
+        "diagnostic_attempts_user_created_idx",
+    }
+    if not required_diagnostic_indexes <= set(diagnostic_indexes):
+        raise RuntimeError(
+            "diagnostic_attempts indexes are missing: "
+            f"{sorted(required_diagnostic_indexes - set(diagnostic_indexes))}"
+        )
+    for index_name in required_diagnostic_indexes:
+        _definition, is_valid, is_ready, _is_unique = diagnostic_indexes[
+            index_name
+        ]
+        if not is_valid or not is_ready:
+            raise RuntimeError(
+                f"diagnostic_attempts index is not ready: {index_name}"
+            )
+    user_created_definition, _, _, user_created_unique = diagnostic_indexes[
+        "diagnostic_attempts_user_created_idx"
+    ]
+    if (
+        user_created_unique
+        or "(user_id,created_atdesc)"
+        not in _normalize_expression(user_created_definition)
+    ):
+        raise RuntimeError(
+            "diagnostic_attempts user-created index definition is unsafe."
+        )
+
+    expected_diagnostic_functions = {
+        "prepare_diagnostic_attempt",
+        "claim_diagnostic_attempt",
+        "complete_diagnostic_attempt",
+    }
+    if set(diagnostic_functions) != expected_diagnostic_functions:
+        raise RuntimeError(
+            "Diagnostic RPC set is incomplete: "
+            f"{sorted(diagnostic_functions)}"
+        )
+    diagnostic_required_fragments = {
+        "prepare_diagnostic_attempt": (
+            "insertintopublic.diagnostic_attempts",
+            "onconflictdonothing",
+            "attempt.user_id=p_user_id",
+            "attempt.material_revision=p_material_revision",
+            "attempt.diagnostic_version=p_diagnostic_version",
+        ),
+        "claim_diagnostic_attempt": (
+            "attempt.status='ready'",
+            "attempt.submission_json=p_submission_json",
+            "attempt.status='evaluating'",
+        ),
+        "complete_diagnostic_attempt": (
+            "attempt.status='evaluating'",
+            "jsonb_typeof(p_result_json)='object'",
+            "attempt.status='completed'",
+        ),
+    }
+    for function_name, function_data in diagnostic_functions.items():
+        is_security_definer, config, owner, definition = function_data
+        normalized_config = {
+            _normalize_expression(setting) for setting in (config or [])
+        }
+        if (
+            not is_security_definer
+            or not normalized_config & {"search_path=", 'search_path=""'}
+        ):
+            raise RuntimeError(
+                f"Diagnostic RPC security configuration is unsafe: {function_name}"
+            )
+        normalized_definition = _normalize_expression(definition)
+        if not all(
+            fragment in normalized_definition
+            for fragment in diagnostic_required_fragments[function_name]
+        ):
+            raise RuntimeError(
+                f"Diagnostic RPC contract is incomplete: {function_name}"
+            )
+        execute_grantees = {
+            grantee
+            for acl_function, grantee, privilege in diagnostic_function_acl
+            if acl_function == function_name and privilege == "EXECUTE"
+        }
+        if (
+            "service_role" not in execute_grantees
+            or execute_grantees & {"PUBLIC", "anon", "authenticated"}
+            or not execute_grantees <= {owner, "service_role"}
+        ):
+            raise RuntimeError(
+                "Diagnostic RPC execute privileges are unsafe: "
+                f"{function_name}:{sorted(execute_grantees)}"
+            )
+
     if not trigger_exists:
         raise RuntimeError("新用户建档触发器不存在。")
 
@@ -815,9 +1067,9 @@ def main() -> None:
             raise RuntimeError(f"Supabase Auth 状态异常：HTTP {response.status}")
 
     print(
-        "Supabase 验证通过：Auth 可用，5 张表启用并强制 RLS，"
+        "Supabase 验证通过：Auth 可用，7 张表启用并强制 RLS，"
         "7 条账号隔离策略、服务端独占档案写入、迁移题私有表/索引/claim RPC、"
-        "材料所有者索引与 AI 原子配额均正常。"
+        "保持率与课前诊断私有契约、材料所有者索引与 AI 原子配额均正常。"
     )
     print(f"账号统计：共 {total_users} 个，已确认邮箱 {confirmed_users} 个。")
     print(

@@ -3,6 +3,31 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
+## 2026-08-26｜课前诊断生产发布安全收口
+
+- 内置 SENet 新增独立、版本化的三道课前诊断题，不复用正式学习后的 `q1/q2/q3`；准备接口只返回题号、类型和题面，不向浏览器发送答案、证据点、来源定位或隐藏评分规则。上传材料首版明确返回 422，不调用 AI。
+- 服务端按三个学习目标分别生成 `ready`、`developing`、`needs_foundation`、`evidence_insufficient` 四态证据；空白、过短、无关和照抄不伪装成错误，明确冲突优先于关键词命中。每题 `confidence=low|medium|high` 必填并随首次提交保存，但不参与评分。
+- 诊断结果只公开目标状态、非答案摘要和 `full / focused / quick_review` 路线；不公开分数、标准答案、检查词、rubric 或原文定位。路线仅表示建议起点，不宣称掌握，可随时撤销、改选或从头开始。
+- 新增私有迁移 `202608250004_diagnostic_attempts.sql`：任务表 Force RLS、无客户端 policy，只有 service role 可读并执行固定 `search_path` 的 prepare/claim/complete RPC；首次基线按账号、材料、材料 revision 和诊断版本唯一。确定性评分在进程中断后允许完全相同的提交恢复完成，不同提交不能覆盖首次基线。
+- 隐藏 contract 同时绑定独立 rubric fingerprint 与实际可执行评分器源码 fingerprint；题面、隐藏规则、材料 revision 或评分实现变化时失败闭合，不能跨版本复用结果。诊断不会写入 `study_records`。
+- 前端支持登录后准备、完成结果恢复、账号切换隔离和 `evaluating` 状态读取；建议路径只保留当前材料真实章节并去重，按顺序提供 44px 可点击导航，点击后聚焦章节 `h2`，手机端按钮满宽。
+- 已把 PR #35 安全提交 `4f23d0b` 以普通 merge 合入 PR #36 本地历史；复盘文档冲突完整保留两侧内容并顺延编号，没有丢弃任何代码或经验记录。
+- `202608250004_diagnostic_attempts.sql` 已删除内层 `BEGIN/COMMIT`，由迁移 runner 独占事务；生产检查器新增迁移账本 SHA-256、诊断表 Force RLS/零策略、service role 只读表权限、全部约束/索引以及 prepare/claim/complete 三个 RPC 的空 search_path、security definer、service-role-only execute 与关键行为验证。
+- 当前验证证据：诊断后端专项 **34 passed**，完整 API **97 passed**，保持率 **8 scenarios passed**，诊断 UI **9 assertions passed**；TypeScript、Vite Production build（**1807 modules**）、两套 Ruff 与 Python 编译均通过。最终完整 `pnpm check` 退出码为 **0**，仅保留 1 条既有 Starlette/httpx 第三方弃用警告。
+- PR #36 当前仍 **OPEN、未合并**；项目所有者已明确授权 002→003→004 生产迁移，但截至本记录三项迁移均尚未执行，课前诊断仍不能写成已上线能力。
+
+### 当前阶段
+
+**阶段：PR #36 已在本地合入通过 CI 的 #35 安全历史，004 原子性与永久生产检查器已修正，完整本地门禁通过；等待提交推送和新 GitHub CI，生产 002–004 尚未执行。**
+
+### 当前最高优先级
+
+提交并推送 PR #36 安全收口，等待新 API/Web CI；随后把已验证历史逐层合入 #37/#38。数据库生产顺序保持 **002 → 003 → 004**：每层只从精确 PR 快照执行单项迁移，现场验证账本/ACL/RPC 后才合并、部署和进入下一层。
+
+不得因为本地测试通过就跳过 PR/CI、一次执行多项迁移，或从堆叠开发分支直接发布 Production。
+
+最后更新：2026-08-26
+
 ## 2026-08-25｜云同步恢复中心已上线；延迟保持率完成主体实现
 
 - 生产数据库已只执行并登记 202608250001_server_owned_study_records.sql：迁移前后 study_records 均为 **11 条**，无记录删除；最终 authenticated 完整表权限仅 SELECT，service role 仅 SELECT/INSERT，RLS 只保留 owner SELECT policy。

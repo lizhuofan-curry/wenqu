@@ -34,6 +34,8 @@ type DashboardProps = {
   selectedPersona: string;
   onSelectPersona: (id: string) => void;
   onStart: (materialId: string) => void;
+  onDiagnose: (materialId: string) => void;
+  canDiagnose: boolean;
   onUpload: (file: File) => void;
   onDelete: (id: string) => void;
   busy: boolean;
@@ -61,6 +63,8 @@ export function Dashboard({
   selectedPersona,
   onSelectPersona,
   onStart,
+  onDiagnose,
+  canDiagnose,
   onUpload,
   onDelete,
   busy,
@@ -86,6 +90,8 @@ export function Dashboard({
     ? Math.round(archive.reduce((sum, item) => sum + item.mastery, 0) / archive.length)
     : 0;
 
+  const builtInMaterial = materials.find((item) => item.id === "senet-cvpr-2018");
+  const heroMaterial = builtInMaterial ?? materials[0];
   return (
     <div className="dashboard page-enter">
       <header className="topbar">
@@ -113,25 +119,37 @@ export function Dashboard({
           <p>
             原文证据、双轨讲解、主动回忆和错因档案，陪你走完整个学习闭环。
           </p>
-          <button
-            className="primary-button"
-            onClick={() => materials[0] && onStart(materials[0].id)}
-            disabled={busy || materials.length === 0}
-          >
-            {materials.length
-              ? `继续 ${materials[0].title} · 约 ${materials[0].estimated_minutes} 分钟`
-              : "开始你的第一份材料"}
-            <ArrowRight size={18} />
-          </button>
+          <div className="diagnostic-entry-actions">
+            {canDiagnose && builtInMaterial ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => onDiagnose(heroMaterial.id)}
+                disabled={busy}
+              >
+                <BrainCircuit size={18} aria-hidden="true" />
+                先做 3 题诊断
+              </button>
+            ) : null}
+            <button
+              className="primary-button"
+              type="button"
+              onClick={() => heroMaterial && onStart(heroMaterial.id)}
+              disabled={busy || !heroMaterial}
+            >
+              {heroMaterial ? `直接开始 · 约 ${heroMaterial.estimated_minutes} 分钟` : "开始你的第一份材料"}
+              <ArrowRight size={18} aria-hidden="true" />
+            </button>
+          </div>
         </div>
         <div className="hero-visual" aria-label="今日阅读材料与进度">
           <div className="book-stack" aria-hidden="true">
             <span className="book-sheet book-sheet-back" />
             <span className="book-sheet book-sheet-middle" />
             <article className="book-cover">
-              <small>今日材料 · CVPR 2018</small>
-              <strong>Squeeze-and-Excitation Networks</strong>
-              <span>{materials[0]?.subtitle ?? "你的下一份学习材料"}</span>
+              <small>{heroMaterial?.source_type === "builtin" ? "今日材料 · CVPR 2018" : "今日材料 · 你的资料"}</small>
+              <strong>{heroMaterial?.title ?? "你的下一份学习材料"}</strong>
+              <span>{heroMaterial?.subtitle ?? "选择一份材料开始学习"}</span>
               <em>问渠陪读本</em>
             </article>
           </div>
@@ -285,10 +303,27 @@ export function Dashboard({
                 </div>
                 <h4>{material.title}</h4>
                 <p>{material.subtitle}</p>
-                <button onClick={() => onStart(material.id)} disabled={busy}>
-                  开始陪读
-                  <ArrowRight size={16} />
-                </button>
+                {canDiagnose && material.id === "senet-cvpr-2018" ? (
+                  <div className="diagnostic-entry-actions compact">
+                    <button
+                      className="secondary-button"
+                      type="button"
+                      onClick={() => onDiagnose(material.id)}
+                      disabled={busy}
+                    >
+                      先做 3 题诊断
+                    </button>
+                    <button type="button" onClick={() => onStart(material.id)} disabled={busy}>
+                      直接开始
+                      <ArrowRight size={16} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => onStart(material.id)} disabled={busy}>
+                    开始陪读
+                    <ArrowRight size={16} aria-hidden="true" />
+                  </button>
+                )}
               </div>
               {material.source_type !== "builtin" && (
                 <button

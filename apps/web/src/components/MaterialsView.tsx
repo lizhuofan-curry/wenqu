@@ -17,6 +17,8 @@ type Props = {
   busy: boolean;
   deletingId: string | null;
   onStart: (id: string) => void;
+  onDiagnose: (id: string) => void;
+  canDiagnose: boolean;
   onUpload: (file: File) => void;
   onDelete: (id: string) => void;
   onRegenerate: (id: string) => void;
@@ -28,7 +30,17 @@ function source_type_label(m: MaterialSummary) {
   return "MD";
 }
 
-export function MaterialsView({ materials, busy, deletingId, onStart, onUpload, onDelete, onRegenerate }: Props) {
+export function MaterialsView({
+  materials,
+  busy,
+  deletingId,
+  onStart,
+  onDiagnose,
+  canDiagnose,
+  onUpload,
+  onDelete,
+  onRegenerate,
+}: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
   const [stepIndex, setStepIndex] = useState(0);
@@ -156,10 +168,22 @@ export function MaterialsView({ materials, busy, deletingId, onStart, onUpload, 
               </div>
               <div className="library-card-foot">
                 <small>{material.progress ? `已学习 ${material.progress}%` : "尚未开始"}</small>
-                <button onClick={() => onStart(material.id)} disabled={busy}>
-                  开始陪读
-                  <ArrowRight size={15} />
-                </button>
+                {canDiagnose && material.id === "senet-cvpr-2018" ? (
+                  <div className="library-actions">
+                    <button className="secondary-button" type="button" onClick={() => onDiagnose(material.id)} disabled={busy}>
+                      先做 3 题诊断
+                    </button>
+                    <button type="button" onClick={() => onStart(material.id)} disabled={busy}>
+                      直接开始
+                      <ArrowRight size={15} aria-hidden="true" />
+                    </button>
+                  </div>
+                ) : (
+                  <button type="button" onClick={() => onStart(material.id)} disabled={busy}>
+                    开始陪读
+                    <ArrowRight size={15} aria-hidden="true" />
+                  </button>
+                )}
               </div>
             </div>
             {material.source_type !== "builtin" && (
