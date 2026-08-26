@@ -24,8 +24,8 @@ export function ReviewComparison({
       </div>
       <div className="review-tag-groups">
         <div>
-          <small><CheckCircle2 size={13} /> 已修正</small>
-          <p>{resolved.length ? resolved.join("、") : "暂未确认有错因完全消失"}</p>
+          <small><CheckCircle2 size={13} /> 本轮未再次检出</small>
+          <p>{resolved.length ? resolved.join("、") : "本轮没有减少的错因标签"}</p>
         </div>
         <div>
           <small><RotateCcw size={13} /> 仍需巩固</small>

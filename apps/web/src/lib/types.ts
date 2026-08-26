@@ -97,11 +97,20 @@ export type Session = {
   transfer?: TransferLink;
   cloud_saved?: boolean;
   cloud_retry_token?: string | null;
+  rubric_fingerprint?: string;
 };
 
 export type ReviewLink = {
   source_session_id: string;
   interval_days: 1 | 3 | 7;
+  source_completed_at?: string;
+  due_at?: string;
+  review_completed_at?: string;
+  actual_delay_seconds?: number;
+  timing_status?: "on_time" | "late";
+  source_rubric_fingerprint?: string;
+  measurement_version?: number;
+  prior_completed_intervals?: Array<1 | 3 | 7>;
 };
 
 export type ArchiveItem = {
@@ -118,6 +127,9 @@ export type ArchiveItem = {
   review?: ReviewLink;
   transfer?: TransferLink;
   transfer_eligible?: boolean;
+  server_verified?: boolean;
+  rubric_fingerprint?: string;
+  result?: EvaluationResult | null;
 };
 
 export type ReviewTask = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from urllib.request import Request, urlopen
 
@@ -7,6 +8,7 @@ import psycopg
 from dotenv import dotenv_values
 
 ROOT = Path(__file__).resolve().parents[3]
+MIGRATIONS_DIR = ROOT / "supabase" / "migrations"
 
 
 def _normalize_expression(value: str | None) -> str:
@@ -62,7 +64,8 @@ def main() -> None:
                         'study_records',
                         'materials',
                         'ai_quota_usage',
-                        'transfer_tasks'
+                        'transfer_tasks',
+                        'retention_measurement_claims'
                       )
                     order by c.relname
                     """
@@ -78,7 +81,8 @@ def main() -> None:
                         'study_records',
                         'materials',
                         'ai_quota_usage',
-                        'transfer_tasks'
+                        'transfer_tasks',
+                        'retention_measurement_claims'
                       )
                     order by tablename, policyname
                     """
@@ -308,6 +312,92 @@ def main() -> None:
                 transfer_claim_acl = set(cursor.fetchall())
                 cursor.execute(
                     """
+                    select version, checksum
+                    from wenqu_migrations.schema_migrations
+                    order by version
+                    """
+                )
+                migration_ledger = dict(cursor.fetchall())
+                cursor.execute(
+                    """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_class c
+                    cross join lateral aclexplode(
+                      coalesce(c.relacl, acldefault('r', c.relowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where c.oid = 'public.retention_measurement_claims'::regclass
+                      and coalesce(grantee_role.rolname, 'PUBLIC') in (
+                        'PUBLIC', 'anon', 'authenticated', 'service_role'
+                      )
+                    """
+                )
+                retention_table_acl = set(cursor.fetchall())
+                cursor.execute(
+                    """
+                    select contype, pg_get_constraintdef(oid)
+                    from pg_constraint
+                    where conrelid =
+                      'public.retention_measurement_claims'::regclass
+                    order by contype, conname
+                    """
+                )
+                retention_constraints = cursor.fetchall()
+                cursor.execute(
+                    """
+                    select
+                      indexdef,
+                      i.indisvalid,
+                      i.indisready,
+                      i.indisunique
+                    from pg_indexes x
+                    join pg_class c on c.relname = x.indexname
+                    join pg_namespace n on n.oid = c.relnamespace
+                      and n.nspname = x.schemaname
+                    join pg_index i on i.indexrelid = c.oid
+                    where x.schemaname = 'public'
+                      and x.indexname =
+                        'study_records_unique_retention_measurement_v1'
+                    """
+                )
+                retention_index = cursor.fetchone()
+                cursor.execute(
+                    """
+                    select
+                      p.prosecdef,
+                      p.proconfig,
+                      owner_role.rolname,
+                      pg_get_functiondef(p.oid)
+                    from pg_proc p
+                    join pg_roles owner_role on owner_role.oid = p.proowner
+                    where p.oid = to_regprocedure(
+                      'public.claim_retention_measurement(uuid,text,smallint,text)'
+                    )
+                    """
+                )
+                retention_claim_function = cursor.fetchone()
+                cursor.execute(
+                    """
+                    select
+                      coalesce(grantee_role.rolname, 'PUBLIC') as grantee,
+                      acl.privilege_type
+                    from pg_proc p
+                    cross join lateral aclexplode(
+                      coalesce(p.proacl, acldefault('f', p.proowner))
+                    ) acl
+                    left join pg_roles grantee_role
+                      on grantee_role.oid = acl.grantee
+                    where p.oid = to_regprocedure(
+                      'public.claim_retention_measurement(uuid,text,smallint,text)'
+                    )
+                    """
+                )
+                retention_claim_acl = set(cursor.fetchall())
+                cursor.execute(
+                    """
                     select exists (
                       select 1
                       from pg_trigger
@@ -343,6 +433,7 @@ def main() -> None:
         ("ai_quota_usage", True, True),
         ("materials", True, True),
         ("profiles", True, True),
+        ("retention_measurement_claims", True, True),
         ("study_records", True, True),
         ("transfer_tasks", True, True),
     ]
@@ -580,6 +671,138 @@ def main() -> None:
             "迁移题 claim RPC 存在额外执行者："
             f"{sorted(claim_execute_grantees)}"
         )
+    migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
+    expected_migration_ledger = {
+        migration_file.stem: hashlib.sha256(
+            migration_file.read_text(encoding="utf-8").encode("utf-8")
+        ).hexdigest()
+        for migration_file in migration_files
+    }
+    if migration_ledger != expected_migration_ledger:
+        raise RuntimeError(
+            "Production migration ledger does not match this repository snapshot: "
+            f"expected={expected_migration_ledger}, actual={migration_ledger}"
+        )
+
+    if retention_table_acl:
+        raise RuntimeError(
+            "retention_measurement_claims has direct non-owner privileges: "
+            f"{sorted(retention_table_acl)}"
+        )
+    normalized_retention_constraints = [
+        (constraint_type, _normalize_expression(definition))
+        for constraint_type, definition in retention_constraints
+    ]
+    if not any(
+        constraint_type == "p"
+        and "primarykey(user_id,source_session_id,interval_days)" in definition
+        for constraint_type, definition in normalized_retention_constraints
+    ):
+        raise RuntimeError("Retention claim composite primary key is missing.")
+    if not any(
+        constraint_type == "u" and "unique(session_id)" in definition
+        for constraint_type, definition in normalized_retention_constraints
+    ):
+        raise RuntimeError("Retention claim session_id uniqueness is missing.")
+    if not any(
+        constraint_type == "f"
+        and "foreignkey(user_id)referencesauth.users(id)ondeletecascade"
+        in definition
+        for constraint_type, definition in normalized_retention_constraints
+    ):
+        raise RuntimeError("Retention claim user foreign key is unsafe.")
+    if not any(
+        constraint_type == "c"
+        and "interval_days" in definition
+        and all(value in definition for value in ("1", "3", "7"))
+        for constraint_type, definition in normalized_retention_constraints
+    ):
+        raise RuntimeError("Retention claim interval constraint is missing.")
+
+    if retention_index is None:
+        raise RuntimeError("Trusted retention uniqueness index is missing.")
+    (
+        retention_index_definition,
+        retention_index_valid,
+        retention_index_ready,
+        retention_index_unique,
+    ) = retention_index
+    normalized_retention_index = _normalize_expression(
+        retention_index_definition
+    )
+    required_retention_index_fragments = (
+        "user_id",
+        "review,source_session_id",
+        "review,interval_days",
+        "server_verified_atisnotnull",
+        "review,measurement_version",
+        "='1'",
+    )
+    if (
+        not retention_index_valid
+        or not retention_index_ready
+        or not retention_index_unique
+        or not all(
+            fragment in normalized_retention_index
+            for fragment in required_retention_index_fragments
+        )
+    ):
+        raise RuntimeError(
+            "Trusted retention uniqueness index is invalid: "
+            f"{retention_index}"
+        )
+
+    if retention_claim_function is None:
+        raise RuntimeError("Atomic retention claim RPC is missing.")
+    (
+        retention_claim_security_definer,
+        retention_claim_config,
+        retention_claim_owner,
+        retention_claim_definition,
+    ) = retention_claim_function
+    normalized_retention_config = {
+        _normalize_expression(setting)
+        for setting in (retention_claim_config or [])
+    }
+    if (
+        not retention_claim_security_definer
+        or not normalized_retention_config
+        & {"search_path=", 'search_path=""'}
+    ):
+        raise RuntimeError(
+            "Retention claim RPC lacks security definer or empty search_path."
+        )
+    normalized_retention_claim = _normalize_expression(
+        retention_claim_definition
+    )
+    required_claim_fragments = (
+        "insertintopublic.retention_measurement_claims",
+        "onconflict(user_id,source_session_id,interval_days)donothing",
+        "getdiagnosticsinserted_count=row_count",
+        "returninserted_count=1",
+    )
+    if not all(
+        fragment in normalized_retention_claim
+        for fragment in required_claim_fragments
+    ):
+        raise RuntimeError("Retention claim RPC is not atomic.")
+    retention_execute_grantees = {
+        grantee
+        for grantee, privilege in retention_claim_acl
+        if privilege == "EXECUTE"
+    }
+    if (
+        "service_role" not in retention_execute_grantees
+        or retention_execute_grantees
+        & {"PUBLIC", "anon", "authenticated"}
+        or not retention_execute_grantees
+        <= {retention_claim_owner, "service_role"}
+    ):
+        raise RuntimeError(
+            "Retention claim RPC execute privileges are unsafe: "
+            f"{sorted(retention_execute_grantees)}"
+        )
+
     if not trigger_exists:
         raise RuntimeError("新用户建档触发器不存在。")
 

@@ -2,7 +2,42 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
-最后更新：2026-08-25
+
+## 2026-08-25｜云同步恢复中心已上线；延迟保持率完成主体实现
+
+- 生产数据库已只执行并登记 202608250001_server_owned_study_records.sql：迁移前后 study_records 均为 **11 条**，无记录删除；最终 authenticated 完整表权限仅 SELECT，service role 仅 SELECT/INSERT，RLS 只保留 owner SELECT policy。
+- Vercel Production 已配置独立 48 字节随机 ARCHIVE_RETRY_SECRET，类型为 Sensitive/Secret；密钥未输出、未写入仓库或项目文档。PR #33 已合并为 51d9022，从该精确干净快照发布。
+- 当前 Production deployment 为 dpl_E7pkn7rBJPTrCxSRm2Fw91dRLesT，状态 READY，正式别名仍为 <https://wenqu-reading-room.vercel.app>。
+- 一次性生产账号验收通过：/api/health 返回恢复密钥配置有效；登录账号直接 POST study_records 返回 **403**；真实 SENet 规则评分为 **88 分**、evaluator=rules 且 cloud_saved=true。
+- 同一 HMAC 恢复凭据连续调用两次均成功，数据库核验只保留 **1 条**相同会话记录；临时测试账号与其评分/恢复记录已全部删除。阶段一恢复记录严格使用 PR #33 合同，没有提前伪造第二阶段 server_verified_at。
+- 延迟保持率主体代码已在 codex/delayed-retention 完成：云端档案读取保留题级结果和 rubric fingerprint；只比较精确来源、同题满分、同评分器、同 rubric 且服务端验证的 D1/D3/D7 记录，迁移题、复述分、旧历史记录和提前提交全部排除。
+- 指标同时显示题目旧分保留率、基线/延迟正确率、净变化、实际间隔、有效/到期样本数、准时/迟到/失访与排除数；基线总分为 0 时不伪造百分比，提升超过基线时保持率封顶 100%，新增能力单列变化百分点。
+- 服务端已补齐可信来源、原始基线、服务器到期时间、材料 revision、重复间隔和原子 claim 校验；202608250003_retention_measurements.sql 创建 Force RLS 私有认领表、service-role-only RPC 和 retention-v1 唯一索引。该迁移尚未应用生产。
+- 洞察页已修正既有误导口径：不再把 mastery 柱图称为“有效时间”，不再固定声称“稳步上升”，也不再用同一平均数伪造三项能力；“已修正”改为证据更窄的“本轮未再次检出”。
+- 延迟保持率提交 `4fde84f` 已推送并创建 stacked PR [#35](https://github.com/lizhuofan-curry/wenqu/pull/35)；保持率公式专项已扩展为 **8 组场景**，完整 `pnpm check` 通过（Production build 1805 modules，后端 **62 passed**，仅 1 条第三方弃用警告），PR #35 的 API 与 Web CI 均通过。
+- PR #34 已 retarget 到 `main`，API 与 Web CI 均通过；PR #35 仍以 PR #34 分支为 base，尚未合并。
+- 项目所有者已于 2026-08-26 明确授权在 Supabase Free Plan、无数据库备份的当前条件下，按 002→003→004 顺序执行生产迁移并继续合并发布；截至本记录，三项迁移尚未执行。
+- PR #35 发布前安全修正已完成：003 迁移由 runner 独占事务；私有声明表取消 service role 直连权限；RPC 固定空 search_path；迁移预检、partial unique index 与 API 预查均只接受 `server_verified_at IS NOT NULL` 的可信记录。
+- 生产检查器新增当前仓库迁移文件 SHA-256 与账本精确一致检查，并验证保持率表的 Force RLS、零策略、零非 owner 直连 ACL、约束、可信唯一索引和 service-role-only 原子 RPC。完整 `pnpm check` 通过：前端构建 1805 modules、保持率 8 场景、后端 **63 passed**，仅 1 条第三方弃用警告。
+- 真实 D1 保持率不能用合成时间或旧历史记录代替：必须在第二阶段上线后新建服务端可信 baseline，并在实际经过至少 24 小时后完成同口径复测才可验收。
+
+### 当前阶段
+
+**阶段：云同步恢复中心已上线；002–004 生产迁移已获明确授权但尚未执行；PR #35 发布安全补丁和完整本地 CI 已完成，等待提交推送后按 #34→#38 的堆叠顺序逐阶段迁移、合并、部署与验收。**
+
+### 当前最高优先级
+
+严格保持以下发布与验收顺序：
+
+1. 提交并推送 PR #35 安全补丁，等待新 CI；
+2. 将补丁逐层合并到 PR #36–#38，并先修正 004 迁移事务和生产检查器；
+3. 从精确 PR #34 快照只执行 002，验证后合并、部署并完成迁移题验收；
+4. 从精确 PR #35 快照只执行 003，验证后合并、部署并创建可信保持率 baseline；
+5. 从精确 PR #36 快照只执行 004，验证后依次合并和发布 #36–#38；
+6. 实际等待至少 24 小时后完成真实 D1 同口径复测与保持率验收。
+
+不得把尚未合并的 PR #34–#38、尚未应用的 002–004 迁移，或尚未实际等待满 24 小时的 D1 写成已上线或已验收。
+最后更新：2026-08-26
 
 ## 2026-08-25｜错因驱动迁移检验完成实现与本地门禁
 

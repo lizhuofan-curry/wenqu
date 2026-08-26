@@ -14,14 +14,23 @@ export function buildReviewTasks(
 ): ReviewTask[] {
   const completedKeys = new Set(
     items.flatMap((item) =>
-      item.review
+      item.review &&
+      item.server_verified === true &&
+      item.review.measurement_version === 1
         ? [`${item.review.source_session_id}:${item.review.interval_days}`]
         : [],
     ),
   );
 
   return items
-    .filter((item) => !item.review && !item.transfer)
+    .filter(
+      (item) =>
+        !item.review &&
+        !item.transfer &&
+        item.server_verified === true &&
+        Boolean(item.rubric_fingerprint) &&
+        Boolean(item.result),
+    )
     .flatMap((item) =>
       REVIEW_INTERVAL_DAYS.map((intervalDays) => {
         const dueAt = addUtcDays(item.completed_at, intervalDays);
