@@ -13,6 +13,8 @@
 - `wenqu.zhuofan.me` 的阿里云 CNAME 已传播到 Google 与 Cloudflare 公共解析，Vercel verify 返回 `configured-correctly`。首次验证后域名仍无独立证书、HTTPS 握手失败；已为该子域单独签发自动续期证书，随后 Android UA 首页返回 HTTP 200，`/api/health` 返回 `status=ok, version=v.5`。
 - PR [#41](https://github.com/lizhuofan-curry/wenqu/pull/41) 的 Web/API CI 均通过，已以普通 merge 合入 `main`，合并提交为 `2881544a08562aae642692be2a9cbc9f359abdbb`。该精确快照已发布到 Vercel Production，部署 `dpl_3vsZfsKUppNrjvP7f9FtxcbmNzyC` 为 READY。
 - 发布后再次在真实生产“学习洞察”页注入虚构极限文本验收：390、360、320px 均无可见元素越界；明暗主题 axe 违规 0、浏览器运行错误 0。生产 CSS 已确认包含 `text-size-adjust`、长词断行和高对比朱砂变量；Android UA 访问主域返回 HTTP 200。
+- 用户第二轮截图确认桌面学习洞察仍有组件内部错位：三张指标卡使用四列网格，右侧留下整列空白；证据工具栏使用了未定义的 `sr-only`，本应仅供辅助技术读取的“搜索笔记 / 按材料筛选”直接参与 flex 布局并被拆行。现已补齐标准视觉隐藏工具类，并将指标网格改为三列 `minmax(0, 1fr)`；未改变现有色彩、字体、圆角或面板装饰。
+- 本地 Production build 再次通过 1810 modules。1420px 下三张指标卡宽度均约 346px、末卡与网格右边距约 0；工具栏两列约 753/301px，两个辅助标签实际盒模型均为 1×1px，输入框与筛选框仍分别拥有可访问名称。390/360/320px 均为 `documentWidth = viewport`、可见元素越界 0；证据笔记面板 axe 违规 0、浏览器运行错误 0。
 
 ### 当前阶段
 
