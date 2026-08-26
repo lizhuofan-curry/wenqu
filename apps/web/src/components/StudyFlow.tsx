@@ -22,6 +22,7 @@ import {
   updateDiagnosticReviewQueue,
 } from "../lib/diagnostic";
 import type { DiagnosticRouteState } from "../lib/diagnostic";
+import type { EvidenceNoteDraftContext } from "./EvidenceNoteDialog";
 import type { Material, Persona, ReviewTask, Session } from "../lib/types";
 import { ReviewComparison } from "./ReviewComparison";
 
@@ -40,6 +41,7 @@ type StudyFlowProps = {
   busy: boolean;
   reviewTask?: ReviewTask;
   diagnosticPlan?: DiagnosticStudyPlan;
+  onCreateEvidenceNote: (context: EvidenceNoteDraftContext, trigger: HTMLElement) => void;
   onEvaluate: (
     answers: Array<{ question_id: string; response: string }>,
     retelling: string,
@@ -68,6 +70,7 @@ export function StudyFlow({
   onExit,
   reviewTask,
   diagnosticPlan,
+  onCreateEvidenceNote,
 }: StudyFlowProps) {
   const sectionIds = useMemo(() => material.sections.map((section) => section.id), [material.sections]);
   const recommendedIds = useMemo(
@@ -325,7 +328,16 @@ export function StudyFlow({
                 <span className="map-index">0{index + 1}</span>
                 <h3>{item.title}</h3>
                 <p>{item.summary}</p>
-                <SourceBadge source={item.source} />
+                <SourceNoteAction
+                  source={item.source}
+                  onCreate={(trigger) => onCreateEvidenceNote({
+                    material_id: material.id,
+                    material_title: material.title,
+                    section_id: `map:${item.key}`,
+                    section_title: `知识地图 · ${item.title}`,
+                    source: evidenceSourceSnapshot(item.source),
+                  }, trigger)}
+                />
               </article>
             ))}
           </div>
@@ -366,7 +378,16 @@ export function StudyFlow({
             <h2 ref={sectionHeadingRef} tabIndex={-1}>
               {activeSection.title}
             </h2>
-            <SourceBadge source={activeSection.source} />
+            <SourceNoteAction
+              source={activeSection.source}
+              onCreate={(trigger) => onCreateEvidenceNote({
+                material_id: material.id,
+                material_title: material.title,
+                section_id: activeSection.id,
+                section_title: activeSection.title,
+                source: evidenceSourceSnapshot(activeSection.source),
+              }, trigger)}
+            />
           </div>
           <div className="dual-track">
             <article className="track-card strict-track">
@@ -617,7 +638,18 @@ export function StudyFlow({
                   <small className={item.verdict}>{item.verdict}</small>
                 </div>
                 <p>{item.feedback}</p>
-                <SourceBadge source={item.source} />
+                {!reviewTask ? (
+                  <SourceNoteAction
+                    source={item.source}
+                    onCreate={(trigger) => onCreateEvidenceNote({
+                      material_id: material.id,
+                      material_title: material.title,
+                      section_id: `result:${item.question_id}`,
+                      section_title: `学习诊断 · 题目 ${index + 1}`,
+                      source: evidenceSourceSnapshot(item.source),
+                    }, trigger)}
+                  />
+                ) : <SourceBadge source={item.source} />}
               </article>
             ))}
           </div>
@@ -662,6 +694,31 @@ function SourceBadge({ source }: { source?: { label: string; detail?: string | n
       {source.label}
       {source.detail && <em> · {source.detail}</em>}
     </span>
+  );
+}
+
+function evidenceSourceSnapshot(source?: { label: string; detail?: string | null } | null) {
+  if (!source?.label) return undefined;
+  return {
+    label: source.label,
+    detail: source.detail || undefined,
+  };
+}
+
+function SourceNoteAction({
+  source,
+  onCreate,
+}: {
+  source?: { label: string; detail?: string | null } | null;
+  onCreate: (trigger: HTMLElement) => void;
+}) {
+  return (
+    <div className="source-note-action">
+      <SourceBadge source={source} />
+      <button type="button" onClick={(event) => onCreate(event.currentTarget)}>
+        记一张
+      </button>
+    </div>
   );
 }
 

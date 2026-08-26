@@ -1,5 +1,6 @@
 import {
   ArrowRight,
+  Bookmark,
   BookOpen,
   Clock3,
   FileSearch,
@@ -22,6 +23,8 @@ type Props = {
   onUpload: (file: File) => void;
   onDelete: (id: string) => void;
   onRegenerate: (id: string) => void;
+  noteCounts: Record<string, number>;
+  onViewNotes: (id: string) => void;
 };
 
 function source_type_label(m: MaterialSummary) {
@@ -39,10 +42,12 @@ export function MaterialsView({
   canDiagnose,
   onUpload,
   onDelete,
+  noteCounts,
+  onViewNotes,
   onRegenerate,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "paper" | "notes" | "completed">("all");
+  const [filter, setFilter] = useState<"all" | "paper" | "markdown" | "completed">("all");
   const [stepIndex, setStepIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -67,7 +72,7 @@ export function MaterialsView({
     const matchesFilter =
       filter === "all" ||
       (filter === "paper" && ["builtin", "pdf"].includes(item.source_type)) ||
-      (filter === "notes" && item.source_type === "markdown") ||
+      (filter === "markdown" && item.source_type === "markdown") ||
       (filter === "completed" && item.progress >= 100);
     return matchesQuery && matchesFilter;
   });
@@ -129,7 +134,7 @@ export function MaterialsView({
           {[
             ["all", "全部"],
             ["paper", "论文"],
-            ["notes", "笔记"],
+            ["markdown", "Markdown"],
             ["completed", "已完成"],
           ].map(([id, label]) => (
             <button
@@ -167,6 +172,12 @@ export function MaterialsView({
                 <span style={{ width: `${Math.max(material.progress, 8)}%` }} />
               </div>
               <div className="library-card-foot">
+                {noteCounts[material.id] > 0 && (
+                  <button className="material-note-index" type="button" onClick={() => onViewNotes(material.id)}>
+                    <Bookmark size={14} aria-hidden="true" />
+                    {noteCounts[material.id]} 张笔记
+                  </button>
+                )}
                 <small>{material.progress ? `已学习 ${material.progress}%` : "尚未开始"}</small>
                 {canDiagnose && material.id === "senet-cvpr-2018" ? (
                   <div className="library-actions">

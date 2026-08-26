@@ -3,6 +3,7 @@ import { ArchiveView } from "./components/ArchiveView";
 import { AuthModal } from "./components/AuthModal";
 import { Dashboard } from "./components/Dashboard";
 import { DiagnosticFlow } from "./components/DiagnosticFlow";
+import { EvidenceNoteDialog, type EvidenceNoteDraftContext } from "./components/EvidenceNoteDialog";
 import { InsightsView } from "./components/InsightsView";
 import { MaterialsView } from "./components/MaterialsView";
 import { MisconceptionsView } from "./components/MisconceptionsView";
@@ -11,6 +12,15 @@ import type { View } from "./components/Shell";
 import { StudyFlow, type DiagnosticStudyPlan } from "./components/StudyFlow";
 import { TransferFlow } from "./components/TransferFlow";
 import { ApiError, api, isDemo, isDegraded } from "./lib/api";
+import {
+  createEvidenceNote,
+  deleteEvidenceNote,
+  loadEvidenceNotes,
+  updateEvidenceNote,
+  type EvidenceNoteCard,
+  type EvidenceMaterialSnapshot,
+  type EvidenceNoteContentKind,
+} from "./lib/evidenceNotes";
 import {
   clearProfileAndActiveSession,
   loadLocalArchive,
@@ -101,9 +111,92 @@ function App() {
   const [userName, setUserName] = useState(
     () => (cloudEnabled ? "" : loadProfile()?.displayName || ""),
   );
+  const [evidenceOwner, setEvidenceOwner] = useState<string | null>(null);
+  const [evidenceNotes, setEvidenceNotes] = useState<EvidenceNoteCard[]>(
+    () => loadEvidenceNotes(window.localStorage, null),
+  );
+  const [evidenceDialog, setEvidenceDialog] = useState<{
+    context: EvidenceNoteDraftContext;
+    note?: EvidenceNoteCard;
+    returnFocus: HTMLElement | null;
+  } | null>(null);
+  const [evidenceError, setEvidenceError] = useState("");
+  const [evidenceMaterialId, setEvidenceMaterialId] = useState<string | null>(null);
   const activeCloudUserId = useRef<string | null>(null);
   const authEpoch = useRef(0);
   const transferRequestInFlight = useRef(false);
+  const evidenceNoteCounts = useMemo(() => evidenceNotes.reduce<Record<string, number>>((counts, note) => {
+    counts[note.material_id] = (counts[note.material_id] || 0) + 1;
+    return counts;
+  }, {}), [evidenceNotes]);
+
+  const evidenceMaterialSnapshots = useMemo<EvidenceMaterialSnapshot[]>(() =>
+    materials.map((item) => ({
+      id: item.id,
+      sectionIds: material?.id === item.id ? [
+        ...material.sections.map((section) => section.id),
+        ...material.map.map((mapItem) => `map:${mapItem.key}`),
+        ...material.questions.map((question) => `result:${question.id}`),
+      ] : undefined,
+    })), [material, materials]);
+
+  function switchEvidenceOwner(ownerId: string | null) {
+    setEvidenceOwner(ownerId);
+    setEvidenceNotes(loadEvidenceNotes(window.localStorage, ownerId));
+    setEvidenceDialog(null);
+    setEvidenceError("");
+    setEvidenceMaterialId(null);
+  }
+
+  function openNewEvidenceNote(context: EvidenceNoteDraftContext, trigger: HTMLElement) {
+    setEvidenceError("");
+    setEvidenceDialog({ context, returnFocus: trigger });
+  }
+
+  function openExistingEvidenceNote(note: EvidenceNoteCard, trigger: HTMLElement) {
+    setEvidenceError("");
+    setEvidenceDialog({
+      note,
+      returnFocus: trigger,
+      context: {
+        material_id: note.material_id,
+        material_title: note.material_title,
+        material_revision: note.material_revision,
+        section_id: note.section_id,
+        section_title: note.section_title,
+        source: note.source,
+      },
+    });
+  }
+
+  function saveEvidenceNote(content: string, contentKind: EvidenceNoteContentKind) {
+    if (!evidenceDialog) return;
+    try {
+      if (evidenceDialog.note) {
+        updateEvidenceNote(window.localStorage, evidenceOwner, evidenceDialog.note.id, {
+          content,
+          content_kind: contentKind,
+        });
+      } else {
+        createEvidenceNote(window.localStorage, evidenceOwner, {
+          ...evidenceDialog.context,
+          content,
+          content_kind: contentKind,
+        });
+      }
+      setEvidenceNotes(loadEvidenceNotes(window.localStorage, evidenceOwner));
+      setEvidenceDialog(null);
+      setEvidenceError("");
+    } catch (reason) {
+      setEvidenceError(reason instanceof Error ? reason.message : "浏览器无法保存这张笔记，请先导出备份并释放空间。");
+    }
+  }
+
+  function removeEvidenceNote(note: EvidenceNoteCard, nextFocus: HTMLElement | null) {
+    deleteEvidenceNote(window.localStorage, evidenceOwner, note.id);
+    setEvidenceNotes(loadEvidenceNotes(window.localStorage, evidenceOwner));
+    requestAnimationFrame(() => nextFocus?.focus());
+  }
 
   const persona = useMemo(
     () => personas.find((item) => item.id === selectedPersona) || personas[0],
@@ -162,6 +255,7 @@ function App() {
       const identityChanged = activeCloudUserId.current !== nextUserId;
       if (identityChanged) {
         activeCloudUserId.current = nextUserId;
+        switchEvidenceOwner(nextUserId);
         ++authEpoch.current;
         setMaterial(null);
         setSession(null);
@@ -245,6 +339,7 @@ function App() {
         ++authEpoch.current;
         clearProfileAndActiveSession();
         activeCloudUserId.current = null;
+        switchEvidenceOwner(null);
         setMaterials([]);
         setMaterial(null);
         setSession(null);
@@ -281,6 +376,7 @@ function App() {
     const identityChanged = activeCloudUserId.current !== nextUserId;
     if (identityChanged) {
       activeCloudUserId.current = nextUserId;
+      switchEvidenceOwner(nextUserId);
       ++authEpoch.current;
       setMaterial(null);
       setSession(null);
@@ -1135,6 +1231,7 @@ function App() {
             if (authEpoch.current !== signOutEpoch) return;
             const publicEpoch = ++authEpoch.current;
             activeCloudUserId.current = null;
+            switchEvidenceOwner(null);
             clearProfileAndActiveSession();
             setUserName("");
             setArchive([]);
@@ -1222,6 +1319,11 @@ function App() {
           onDiagnose={(id) => void startDiagnostic(id)}
           canDiagnose={Boolean(activeCloudUserId.current)}
           onDelete={(id) => void deleteMaterial(id)}
+          noteCounts={evidenceNoteCounts}
+          onViewNotes={(id) => {
+            setEvidenceMaterialId(id);
+            setView("insights");
+          }}
           onRegenerate={(id) => {
             const epoch = authEpoch.current;
             void api.regenerateMaterial(id).then((updated) => {
@@ -1238,6 +1340,12 @@ function App() {
       {view === "insights" && (
         <InsightsView
           items={archive}
+          evidenceNotes={evidenceNotes}
+          materials={materials}
+          evidenceMaterialSnapshots={evidenceMaterialSnapshots}
+          evidenceMaterialId={evidenceMaterialId}
+          onEditEvidenceNote={openExistingEvidenceNote}
+          onDeleteEvidenceNote={removeEvidenceNote}
           onReview={() => {
             const recent = archive[0]?.material_id;
             const target = materials.find((m) => m.id === recent) || materials[0];
@@ -1297,6 +1405,7 @@ function App() {
           busy={busy}
           reviewTask={activeReviewTask || undefined}
           diagnosticPlan={diagnosticPlan || undefined}
+          onCreateEvidenceNote={openNewEvidenceNote}
           onEvaluate={(answers, retelling) => void evaluate(answers, retelling)}
           onExit={() => {
             setActiveReviewTask(null);
@@ -1318,6 +1427,19 @@ function App() {
         <div className="degraded-bar" role="status">
           {syncStatus}
         </div>
+      )}
+      {evidenceDialog && (
+        <EvidenceNoteDialog
+          context={evidenceDialog.context}
+          note={evidenceDialog.note}
+          returnFocus={evidenceDialog.returnFocus}
+          error={evidenceError}
+          onClose={() => {
+            setEvidenceDialog(null);
+            setEvidenceError("");
+          }}
+          onSave={saveEvidenceNote}
+        />
       )}
       <AuthModal
         key={authMode}
