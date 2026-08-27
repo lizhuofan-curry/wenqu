@@ -22,6 +22,17 @@ import {
   type EvidenceNoteContentKind,
 } from "./lib/evidenceNotes";
 import {
+  MAX_TOPICS_PER_OWNER,
+  addMaterialToTopic,
+  createTopic,
+  deleteTopic,
+  loadTopics,
+  removeMaterialFromTopic,
+  updateTopic,
+  type Topic,
+  type TopicInput,
+} from "./lib/topics";
+import {
   clearProfileAndActiveSession,
   loadLocalArchive,
   loadLocalOnlySyncRecords,
@@ -122,6 +133,11 @@ function App() {
   } | null>(null);
   const [evidenceError, setEvidenceError] = useState("");
   const [evidenceMaterialId, setEvidenceMaterialId] = useState<string | null>(null);
+  const [topicOwner, setTopicOwner] = useState<string | null>(null);
+  const [topics, setTopics] = useState<Topic[]>(
+    () => loadTopics(window.localStorage, null),
+  );
+  const [topicsError, setTopicsError] = useState("");
   const activeCloudUserId = useRef<string | null>(null);
   const authEpoch = useRef(0);
   const transferRequestInFlight = useRef(false);
@@ -146,6 +162,65 @@ function App() {
     setEvidenceDialog(null);
     setEvidenceError("");
     setEvidenceMaterialId(null);
+  }
+
+  function switchTopicsOwner(ownerId: string | null) {
+    setTopicOwner(ownerId);
+    setTopics(loadTopics(window.localStorage, ownerId));
+    setTopicsError("");
+  }
+
+  function topicsErrorMessage(reason: unknown): string {
+    if (reason instanceof Error && reason.message === "topic limit reached") {
+      return `专题数量已达上限（${MAX_TOPICS_PER_OWNER} 个），请先删除不再需要的专题。`;
+    }
+    return "浏览器无法保存这次专题修改，请释放空间后重试。";
+  }
+
+  function reloadTopics() {
+    setTopics(loadTopics(window.localStorage, topicOwner));
+  }
+
+  function createTopicEntry(input: TopicInput) {
+    try {
+      createTopic(window.localStorage, topicOwner, input);
+      reloadTopics();
+      setTopicsError("");
+    } catch (reason) {
+      setTopicsError(topicsErrorMessage(reason));
+    }
+  }
+
+  function renameTopicEntry(topicId: string, name: string) {
+    try {
+      updateTopic(window.localStorage, topicOwner, topicId, { name });
+      reloadTopics();
+      setTopicsError("");
+    } catch (reason) {
+      setTopicsError(topicsErrorMessage(reason));
+    }
+  }
+
+  function deleteTopicEntry(topicId: string) {
+    deleteTopic(window.localStorage, topicOwner, topicId);
+    reloadTopics();
+    setTopicsError("");
+  }
+
+  function addMaterialToTopicEntry(topicId: string, materialId: string) {
+    try {
+      addMaterialToTopic(window.localStorage, topicOwner, topicId, materialId);
+      reloadTopics();
+      setTopicsError("");
+    } catch (reason) {
+      setTopicsError(topicsErrorMessage(reason));
+    }
+  }
+
+  function removeMaterialFromTopicEntry(topicId: string, materialId: string) {
+    removeMaterialFromTopic(window.localStorage, topicOwner, topicId, materialId);
+    reloadTopics();
+    setTopicsError("");
   }
 
   function openNewEvidenceNote(context: EvidenceNoteDraftContext, trigger: HTMLElement) {
@@ -256,6 +331,7 @@ function App() {
       if (identityChanged) {
         activeCloudUserId.current = nextUserId;
         switchEvidenceOwner(nextUserId);
+        switchTopicsOwner(nextUserId);
         ++authEpoch.current;
         setMaterial(null);
         setSession(null);
@@ -340,6 +416,7 @@ function App() {
         clearProfileAndActiveSession();
         activeCloudUserId.current = null;
         switchEvidenceOwner(null);
+        switchTopicsOwner(null);
         setMaterials([]);
         setMaterial(null);
         setSession(null);
@@ -377,6 +454,7 @@ function App() {
     if (identityChanged) {
       activeCloudUserId.current = nextUserId;
       switchEvidenceOwner(nextUserId);
+      switchTopicsOwner(nextUserId);
       ++authEpoch.current;
       setMaterial(null);
       setSession(null);
@@ -1232,6 +1310,7 @@ function App() {
             const publicEpoch = ++authEpoch.current;
             activeCloudUserId.current = null;
             switchEvidenceOwner(null);
+            switchTopicsOwner(null);
             clearProfileAndActiveSession();
             setUserName("");
             setArchive([]);
@@ -1324,6 +1403,13 @@ function App() {
             setEvidenceMaterialId(id);
             setView("insights");
           }}
+          topics={topics}
+          topicsError={topicsError}
+          onCreateTopic={createTopicEntry}
+          onRenameTopic={renameTopicEntry}
+          onDeleteTopic={deleteTopicEntry}
+          onAddMaterialToTopic={addMaterialToTopicEntry}
+          onRemoveMaterialFromTopic={removeMaterialFromTopicEntry}
           onRegenerate={(id) => {
             const epoch = authEpoch.current;
             void api.regenerateMaterial(id).then((updated) => {

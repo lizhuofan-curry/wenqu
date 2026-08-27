@@ -12,6 +12,8 @@ import {
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { MaterialSummary } from "../lib/types";
+import type { Topic, TopicInput } from "../lib/topics";
+import { TopicsSection } from "./TopicsSection";
 
 type Props = {
   materials: MaterialSummary[];
@@ -25,6 +27,13 @@ type Props = {
   onRegenerate: (id: string) => void;
   noteCounts: Record<string, number>;
   onViewNotes: (id: string) => void;
+  topics: Topic[];
+  topicsError: string;
+  onCreateTopic: (input: TopicInput) => void;
+  onRenameTopic: (topicId: string, name: string) => void;
+  onDeleteTopic: (topicId: string) => void;
+  onAddMaterialToTopic: (topicId: string, materialId: string) => void;
+  onRemoveMaterialFromTopic: (topicId: string, materialId: string) => void;
 };
 
 function source_type_label(m: MaterialSummary) {
@@ -45,9 +54,17 @@ export function MaterialsView({
   noteCounts,
   onViewNotes,
   onRegenerate,
+  topics,
+  topicsError,
+  onCreateTopic,
+  onRenameTopic,
+  onDeleteTopic,
+  onAddMaterialToTopic,
+  onRemoveMaterialFromTopic,
 }: Props) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "paper" | "markdown" | "completed">("all");
+  const [topicFilter, setTopicFilter] = useState("all");
   const [stepIndex, setStepIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -74,7 +91,11 @@ export function MaterialsView({
       (filter === "paper" && ["builtin", "pdf"].includes(item.source_type)) ||
       (filter === "markdown" && item.source_type === "markdown") ||
       (filter === "completed" && item.progress >= 100);
-    return matchesQuery && matchesFilter;
+    const matchesTopic =
+      topicFilter === "all" ||
+      (topicFilter === "ungrouped" && !topics.some((topic) => topic.material_ids.includes(item.id))) ||
+      topics.find((topic) => topic.id === topicFilter)?.material_ids.includes(item.id) === true;
+    return matchesQuery && matchesFilter && matchesTopic;
   });
 
   return (
@@ -101,6 +122,20 @@ export function MaterialsView({
           }}
         />
       </header>
+      <TopicsSection
+        topics={topics}
+        materials={materials}
+        error={topicsError}
+        busy={busy}
+        canDiagnose={canDiagnose}
+        onCreate={onCreateTopic}
+        onRename={onRenameTopic}
+        onDelete={onDeleteTopic}
+        onAddMaterial={onAddMaterialToTopic}
+        onRemoveMaterial={onRemoveMaterialFromTopic}
+        onStartMaterial={onStart}
+        onDiagnoseMaterial={onDiagnose}
+      />
       {busy && (
         <div className="upload-overlay" role="status" aria-live="polite" aria-busy="true">
           <div className="upload-dialog">
@@ -156,6 +191,20 @@ export function MaterialsView({
             </button>
           ))}
         </div>
+        <label className="topic-filter">
+          <span className="sr-only">按专题筛选</span>
+          <select
+            value={topicFilter}
+            onChange={(event) => setTopicFilter(event.target.value)}
+            aria-label="按专题筛选"
+          >
+            <option value="all">全部专题</option>
+            <option value="ungrouped">未加入专题</option>
+            {topics.map((topic) => (
+              <option value={topic.id} key={topic.id}>{topic.name}</option>
+            ))}
+          </select>
+        </label>
       </div>
       <div className="library-grid">
         {filtered.map((material, index) => (

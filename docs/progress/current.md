@@ -3,6 +3,27 @@
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 
+## 2026-08-27｜工程质量清理、排版边框收口、本地多材料专题与云端同步设计文档
+
+- `api/index.py` 历史 Ruff 规范项清零：实测 67 条（文档旧记录 87 条已漂移），经 `--fix` 与手工折行/补 `strict=`/`from exc`/刻意 `noqa: E402` 处理后，项目全规则下 0 条；所有长字符串仅改排版不改内容。
+- 修复冷启动恢复缺口的残留部分：Supabase 读回材料后现在会复用上传路径同一切块函数回填 RAG 原文 chunks，冷启动后 AI 评分不再退化为无 source_excerpts；新增回归测试模拟内存 miss → 读回 → 断言 chunks 非空。
+- 前端排版与边框收口：tokens.css 新增字号/行高/圆角 token 阶梯；修复 `--radius-soft`、`--paper-dark`、`--shadow-soft` 三个被引用但未定义的 CSS 变量 bug；清除 56 处 <12px 超小字；focus-visible 光环统一为靛蓝体系；Inter 与 JetBrains Mono 真正加载（此前仅在字体栈中声明）。行高归一有轻微视觉变化，属有意收口。
+- 新功能「多材料专题」本地优先 MVP：专题创建/重命名/删除、材料加入/移出、资料库按专题筛选、专题卡片含成员学习/诊断入口；数据存 localStorage 按 owner 命名空间隔离（`wenqu-topics-v1:<ownerId>`，上限 50），UI 明示「专题分组仅保存在此浏览器」；白名单重建、失效材料标记、匿名不迁移均对齐证据笔记既有模式。跨材料 AI 知识地图需后端支持，本轮未做。
+- 证据笔记云端同步只完成独立安全设计文档 `docs/design/evidence-notes-cloud-sync.md`：evidence_notes 表 DDL、RLS 策略（推荐服务端独占写）、push/pull 增量同步与 LWW 冲突边界、匿名归属不自动迁移、安全约束清单与灰度/回滚方案；topics 云端表已预留。生产数据库迁移未执行，实施需项目所有者单独明确授权。
+- 验证证据：`pnpm check` 全量通过——typecheck、Vite build（1812 modules）、保持率 8 场景、诊断 35 项、证据笔记 50 项、专题 60 项断言、两套 Ruff、py_compile、API 98 项 pytest 全过（仅 1 条既有 Starlette/httpx 第三方弃用警告）。
+- 本轮改动未提交、未推送、未部署；Vercel Production 仍运行 2026-08-26 版本。
+
+### 当前阶段
+
+**阶段：本轮四项工作已在本地完成并通过全量门禁；未发布。云端同步设计文档待所有者评审与迁移授权；专题云端化依赖该迁移。**
+
+### 当前最高优先级
+
+请项目所有者分别使用一台真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐物理终端双链路证据（用户侧事项，保持不变）。随后评审云端同步设计文档并决定是否授权生产迁移；本轮本地改动待确认后再提交推送。
+
+最后更新：2026-08-27
+
+
 ## 2026-08-26｜前端加载与可访问性优化上线
 
 - 字体加载从 CSS `@import` 改为 HTML `<link rel="stylesheet">` 并预连接 `fonts.googleapis.com` / `fonts.gstatic.com`，消除串行 CSS 请求链；`theme-color` 按明暗主题分别给出 `#faf8f3` 与 `#16181d`。

@@ -7,21 +7,20 @@ The FastAPI app is mounted as an ASGI application.
 from __future__ import annotations
 
 import base64
-import json
 import hashlib
 import hmac
+import json
 import logging
 import os
 import re
 import sys
 import time
-import uuid
 import urllib.error as _urlerror
 import urllib.parse as _urlparse
 import urllib.request as _urllib
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Dict, List
 
 # Vercel adds <project-root>/api to sys.path.  Add <project-root> so we can
 # import from services/api/app.
@@ -29,19 +28,25 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from fastapi import FastAPI, Header, HTTPException, Request, UploadFile
-from fastapi.middleware.cors import CORSMiddleware
-from pathlib import Path as FilePath
-from pydantic import BaseModel, Field
+# Imports below intentionally follow the sys.path fix above: on Vercel the
+# project root is only importable after the insertion, so these cannot move
+# to the top of the file.
+from pathlib import Path as FilePath  # noqa: E402
 
-from api.diagnostic_routes import register_diagnostic_routes
-from api.transfer_core import material_rubric_fingerprint
-from api.transfer_routes import register_transfer_routes
+from fastapi import FastAPI, Header, HTTPException, Request, UploadFile  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from pydantic import BaseModel, Field  # noqa: E402
+
+from api.diagnostic_routes import register_diagnostic_routes  # noqa: E402
+from api.transfer_core import material_rubric_fingerprint  # noqa: E402
+from api.transfer_routes import register_transfer_routes  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
-_supa_url = (os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")).strip().strip('"')
+_supa_url = (
+    os.getenv("SUPABASE_URL", "") or os.getenv("NEXT_PUBLIC_SUPABASE_URL", "")
+).strip().strip('"')
 _supa_service_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip().strip('"')
 _archive_retry_secret = os.getenv("ARCHIVE_RETRY_SECRET", "").strip().strip('"')
 _supa_auth_key = (
@@ -279,6 +284,16 @@ def _load_supa_materials(user_id: str):
             ):
                 p["_owner_id"] = user_id
                 store.seed_senet(p)
+                if not store.get_chunks(p["id"], user_id):
+                    # Cold-start restore must rebuild the same RAG source
+                    # excerpts the upload path creates; the payload keeps the
+                    # original text in each section's strict_track.
+                    restored_text = "\n".join(
+                        str(section.get("strict_track", ""))
+                        for section in p.get("sections", [])
+                        if isinstance(section, dict)
+                    )
+                    _set_source_chunks(p["id"], restored_text)
     except Exception as exc:
         logger.warning("material_restore_failed error=%s", type(exc).__name__)
 
@@ -300,9 +315,9 @@ settings = Settings()
 # --- In-memory store (stateless, rebuilt on cold start) -----------------------
 class MemStore:
     def __init__(self):
-        self._materials: Dict[str, dict] = {}
-        self._sessions: Dict[str, dict] = {}
-        self._chunks: Dict[str, list[dict]] = {}  # material_id -> [{text, embedding}]
+        self._materials: dict[str, dict] = {}
+        self._sessions: dict[str, dict] = {}
+        self._chunks: dict[str, list[dict]] = {}  # material_id -> [{text, embedding}]
 
     def seed_senet(self, senet: dict):
         material_id = senet["id"]
@@ -318,7 +333,7 @@ class MemStore:
             return []
         return self._chunks.get(material_id, [])
 
-    def list_materials(self, user_id: str | None) -> List[dict]:
+    def list_materials(self, user_id: str | None) -> list[dict]:
         return [
             material for material in self._materials.values()
             if material.get("id") == "senet-cvpr-2018"
@@ -366,7 +381,7 @@ class MemStore:
         s["result"] = result
         return s
 
-    def archive_rows(self, user_id: str) -> List[dict]:
+    def archive_rows(self, user_id: str) -> list[dict]:
         return [
             s for s in self._sessions.values()
             if s["status"] == "completed" and s.get("_owner_id") == user_id
@@ -390,10 +405,12 @@ SENET_MATERIAL = dict(
              summary="普通卷积把通道关系隐式地埋在卷积核里，网络缺少根据当前输入显式调整通道响应的机制。",
              source=dict(label="PDF 第 2—3 页", detail="第 3 节开头")),
         dict(key="method", title="方法",
-             summary="先用全局平均池化压缩空间信息，再用两层门控生成 C 个通道权重，最后逐通道缩放原特征。",
+             summary=("先用全局平均池化压缩空间信息，再用两层门控生成 C 个通道权重，"
+                      "最后逐通道缩放原特征。"),
              source=dict(label="PDF 第 2—3 页", detail="Figure 1；公式（2）—（4）")),
         dict(key="evidence", title="证据",
-             summary="SE block 接入 ResNet、ResNeXt、VGG 和 Inception 等架构后，ImageNet 验证集错误率普遍下降。",
+             summary=("SE block 接入 ResNet、ResNeXt、VGG 和 Inception 等架构后，"
+                      "ImageNet 验证集错误率普遍下降。"),
              source=dict(label="PDF 第 5—7 页", detail="Table 2、Table 3、Table 5、Table 6")),
         dict(key="conclusion", title="结论",
              summary="输入相关的通道重标定可以用较小计算开销增强多种 CNN 主干的表示能力。",
@@ -409,20 +426,33 @@ SENET_MATERIAL = dict(
     ],
     sections=[
         dict(id="squeeze", title="Squeeze", eyebrow="全局信息嵌入",
-             strict_track="输入 U∈R^(H×W×C)。对第 c 个通道执行全局平均池化：z_c=1/(H×W)·Σ_iΣ_j u_c(i,j)。张量从 H×W×C 变为 1×1×C。每个通道保留一个全局统计值，但具体空间位置被压缩。",
-             companion_track="先别被名字吓到。Squeeze 不是把通道删掉，而是给每个通道写一句摘要。原来一个通道有 H×W 个数，现在先平均成一个数，所以 C 个通道仍然都在。",
+             strict_track=("输入 U∈R^(H×W×C)。对第 c 个通道执行全局平均池化："
+                           "z_c=1/(H×W)·Σ_iΣ_j u_c(i,j)。张量从 H×W×C 变为 1×1×C。"
+                           "每个通道保留一个全局统计值，但具体空间位置被压缩。"),
+             companion_track=("先别被名字吓到。Squeeze 不是把通道删掉，而是给每个通道写一句摘要。"
+                              "原来一个通道有 H×W 个数，现在先平均成一个数，"
+                              "所以 C 个通道仍然都在。"),
              source=dict(label="PDF 第 3 页", detail="3.1 节与公式（2）")),
         dict(id="excitation", title="Excitation", eyebrow="自适应通道门控",
-             strict_track="s=σ(W₂·ReLU(W₁·z))。若 reduction ratio 为 r，维度依次为 C→C/r→C。sigmoid 为每个通道生成独立的 0—1 门控值；通道不是互斥关系，因此不是 softmax。",
-             companion_track="把 C 句通道摘要放在一起判断：谁该大声一点，谁先小点声。两层全连接先压缩再恢复，最后得到 C 个音量旋钮。多个通道可以同时重要。",
+             strict_track=("s=σ(W₂·ReLU(W₁·z))。若 reduction ratio 为 r，维度依次为 C→C/r→C。"
+                           "sigmoid 为每个通道生成独立的 0—1 门控值；"
+                           "通道不是互斥关系，因此不是 softmax。"),
+             companion_track=("把 C 句通道摘要放在一起判断：谁该大声一点，谁先小点声。"
+                              "两层全连接先压缩再恢复，最后得到 C 个音量旋钮。"
+                              "多个通道可以同时重要。"),
              source=dict(label="PDF 第 3 页", detail="3.2 节与公式（3）")),
         dict(id="scale", title="Scale", eyebrow="逐通道重标定",
-             strict_track="第 c 个输出通道为 X̃_c=s_c·u_c。标量 s_c 广播到该通道所有空间位置，因此输出形状仍为 H×W×C。权重由当前输入计算，不是训练后固定常数。",
-             companion_track="现在把每个通道乘上自己的音量旋钮。形状完全不变，只是响应强弱变了。同一通道遇到不同图片时权重也会变；把它说成固定剪枝，就绕偏了。",
+             strict_track=("第 c 个输出通道为 X̃_c=s_c·u_c。标量 s_c 广播到该通道所有空间位置，"
+                           "因此输出形状仍为 H×W×C。权重由当前输入计算，不是训练后固定常数。"),
+             companion_track=("现在把每个通道乘上自己的音量旋钮。形状完全不变，只是响应强弱变了。"
+                              "同一通道遇到不同图片时权重也会变；把它说成固定剪枝，就绕偏了。"),
              source=dict(label="PDF 第 3 页", detail="公式（4）")),
         dict(id="resnet", title="接入 ResNet", eyebrow="残差分支位置",
-             strict_track="SE 作用于 non-identity residual branch。先计算 residual transform，再执行 SE scale，最后与 identity branch 相加。对应表达为 output=SE(residual(x))+identity(x)。",
-             companion_track="两条路别搅一锅：SE 只调 residual 那条路，调完才和 identity 会合。看 Figure 3 的箭头，位置比背公式更重要。",
+             strict_track=("SE 作用于 non-identity residual branch。先计算 residual transform，"
+                           "再执行 SE scale，最后与 identity branch 相加。"
+                           "对应表达为 output=SE(residual(x))+identity(x)。"),
+             companion_track=("两条路别搅一锅：SE 只调 residual 那条路，调完才和 identity 会合。"
+                              "看 Figure 3 的箭头，位置比背公式更重要。"),
              source=dict(label="PDF 第 4 页", detail="Figure 3 与 3.3 节")),
     ],
     questions=[
@@ -430,16 +460,19 @@ SENET_MATERIAL = dict(
              prompt="为什么 Squeeze 要把每个 H×W 通道压缩成一个数？这样获得了什么，又丢失了什么？",
              hint="分别考虑全局上下文和空间位置。",
              source=dict(label="PDF 第 3 页", detail="3.1 节与公式（2）"),
-             answer_guide="全局平均池化为每个通道生成利用整张特征图的全局描述；保留 C 个通道，但压缩了具体空间位置与分布信息。",
+             answer_guide=("全局平均池化为每个通道生成利用整张特征图的全局描述；"
+                           "保留 C 个通道，但压缩了具体空间位置与分布信息。"),
              max_score=4),
         dict(id="q2", kind="tensor",
-             prompt="输入 U 的形状是 32×32×256，reduction ratio r=16。依次写出 Squeeze、第一层 FC、第二层 FC+sigmoid、Scale 后的形状。",
+             prompt=("输入 U 的形状是 32×32×256，reduction ratio r=16。"
+                     "依次写出 Squeeze、第一层 FC、第二层 FC+sigmoid、Scale 后的形状。"),
              hint="r 只控制中间瓶颈维度。",
              source=dict(label="PDF 第 3—4 页", detail="公式（3）、（4）与 Figure 3"),
              answer_guide="1×1×256 → 16 → 256 → 32×32×256。",
              max_score=4),
         dict(id="q3", kind="structure",
-             prompt="哪种写法符合论文 Figure 3？A. SE(residual(x)+identity(x))；B. SE(residual(x))+identity(x)。请说明理由。",
+             prompt=("哪种写法符合论文 Figure 3？A. SE(residual(x)+identity(x))；"
+                     "B. SE(residual(x))+identity(x)。请说明理由。"),
              hint="观察 SE 位于哪一条分支、在相加节点之前还是之后。",
              source=dict(label="PDF 第 4 页", detail="Figure 3"),
              answer_guide="选择 B。SE 缩放 residual/non-identity branch，之后才与 identity 相加。",
@@ -463,7 +496,8 @@ def _seed_senet_chunks():
             loop.close()
             store.set_chunks("senet-cvpr-2018", [
                 {"text": c, "embedding": e}
-                for c, e in zip(chunks, embeddings)
+                # Embeddings may be missing when the provider is unreachable.
+                for c, e in zip(chunks, embeddings, strict=False)
             ])
     except Exception:
         pass
@@ -482,8 +516,10 @@ def _contains(text: str, *terms: str) -> bool:
 
 def _verdict(score: int, max_score: int) -> str:
     ratio = score / max_score
-    if ratio >= 0.75: return "掌握"
-    if ratio >= 0.4: return "部分掌握"
+    if ratio >= 0.75:
+        return "掌握"
+    if ratio >= 0.4:
+        return "部分掌握"
     return "需要回看"
 
 
@@ -539,8 +575,10 @@ def evaluate_senet(response: dict) -> dict:
             q_results.append(dict(
                 question_id=rid, verdict=_verdict(score, 4), score=score,
                 max_score=4, misconception_tags=tags,
-                feedback="检查各阶段形状：Squeeze → 1×1×C，FC1 → 1×1×C/r，FC2 → 1×1×C，Scale → H×W×C。",
-                source=dict(label="PDF 第 3—4 页", detail="公式（3）、（4）") if score < 3 else None,
+                feedback=("检查各阶段形状：Squeeze → 1×1×C，FC1 → 1×1×C/r，"
+                          "FC2 → 1×1×C，Scale → H×W×C。"),
+                source=(dict(label="PDF 第 3—4 页", detail="公式（3）、（4）")
+                        if score < 3 else None),
             ))
             total_score += score
 
@@ -673,6 +711,13 @@ def _chunk_text(text: str, chunk_size: int = 400, overlap: int = 80) -> list[str
     return [c for c in chunks if len(c) > 20]
 
 
+def _set_source_chunks(material_id: str, source_text: str) -> None:
+    """Chunk source text into local RAG excerpts (no embedding request)."""
+    chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
+    if chunk_texts:
+        store.set_chunks(material_id, [{"text": chunk} for chunk in chunk_texts])
+
+
 async def _embed_texts(texts: list[str]) -> list[list[float]]:
     """Get embeddings from DeepSeek API."""
     from openai import OpenAI
@@ -693,7 +738,7 @@ async def _embed_texts(texts: list[str]) -> list[list[float]]:
 
 def _cosine_similarity(a: list[float], b: list[float]) -> float:
     """Compute cosine similarity between two vectors."""
-    dot = sum(x * y for x, y in zip(a, b))
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
     norm_a = sum(x * x for x in a) ** 0.5
     norm_b = sum(x * x for x in b) ** 0.5
     return dot / (norm_a * norm_b) if norm_a and norm_b else 0.0
@@ -786,11 +831,17 @@ async def evaluate_with_deepseek(
             rag_context = "\n\n相关原文片段：\n" + "\n---\n".join(relevant)
 
     prompt = {
-        "task": ("作为问渠诊断器，根据评分依据和提供的原文片段评估学习者的回答和复述。用中文。"
-                 if rag_context else "作为问渠诊断器，根据评分依据评估学习者的回答和复述。用中文。"),
+        "task": (
+            "作为问渠诊断器，根据评分依据和提供的原文片段评估学习者的回答和复述。用中文。"
+            if rag_context
+            else "作为问渠诊断器，根据评分依据评估学习者的回答和复述。用中文。"
+        ),
         "material": material_title,
         "questions": question_context,
-        "answers": [{"question_id": a.get("question_id",""), "response": a.get("response","")} for a in answers],
+        "answers": [
+            {"question_id": a.get("question_id",""), "response": a.get("response","")}
+            for a in answers
+        ],
         "retelling": retelling,
     }
     if rag_context:
@@ -822,7 +873,10 @@ async def evaluate_with_deepseek(
         mastery=parsed.mastery,
         headline=parsed.headline,
         question_results=[qr.model_dump() for qr in parsed.question_results],
-        retelling=parsed.retelling.model_dump() | {"misconception_tags": parsed.retelling.misconception_tags},
+        retelling=(
+            parsed.retelling.model_dump()
+            | {"misconception_tags": parsed.retelling.misconception_tags}
+        ),
         misconception_tags=parsed.misconception_tags,
     )
 
@@ -1184,7 +1238,11 @@ def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
         },
         "misconception_tags": all_tags,
         "review_sources": [],
-        "next_step": "回看材料中对应证据后再答一次。" if mastery < 60 else "继续用自己的话复述，并核对原文证据。",
+        "next_step": (
+            "回看材料中对应证据后再答一次。"
+            if mastery < 60
+            else "继续用自己的话复述，并核对原文证据。"
+        ),
     }
 
 
@@ -1200,7 +1258,11 @@ def health() -> dict:
         "ai_configured": ai_configured,
         "archive_retry_configured": _archive_retry_key() is not None,
         "ai_provider": settings.ai_provider,
-        "model": settings.deepseek_model if settings.ai_provider == "deepseek" else settings.openai_model,
+        "model": (
+            settings.deepseek_model
+            if settings.ai_provider == "deepseek"
+            else settings.openai_model
+        ),
     }
 
 
@@ -1245,8 +1307,8 @@ def _extract_text(filename: str, content: bytes) -> str:
     if suffix in {".md", ".markdown"}:
         try:
             return content.decode("utf-8")[:60000]
-        except UnicodeDecodeError:
-            raise HTTPException(400, "Markdown 文件必须使用 UTF-8 编码。")
+        except UnicodeDecodeError as exc:
+            raise HTTPException(400, "Markdown 文件必须使用 UTF-8 编码。") from exc
 
     if suffix == ".pdf":
         # Try pymupdf first
@@ -1262,7 +1324,7 @@ def _extract_text(filename: str, content: bytes) -> str:
             if len(text) < 200:
                 raise HTTPException(400, "没有提取到足够文字，可能为扫描版 PDF，暂不支持 OCR。")
             return text[:60000]
-        except ImportError:
+        except ImportError as exc:
             # Fallback: try basic extraction
             try:
                 decoded = content.decode("latin-1", errors="ignore")
@@ -1274,7 +1336,7 @@ def _extract_text(filename: str, content: bytes) -> str:
                     return "\n".join(text_parts)[:60000]
             except Exception:
                 pass
-            raise HTTPException(400, "PDF 文本提取失败，建议先转换为 Markdown 格式上传。")
+            raise HTTPException(400, "PDF 文本提取失败，建议先转换为 Markdown 格式上传。") from exc
         except HTTPException:
             raise
         except Exception as exc:
@@ -1310,7 +1372,14 @@ async def _generate_material_via_ai(filename: str, text: str) -> dict:
     )
     model = os.getenv("DEEPSEEK_MODEL", "deepseek-v4-flash")
 
-    prompt = f"文件: {filename}\n\n内容摘要:\n{text[:2000]}\n\n生成学习包 JSON: title(标题), subtitle(副标题), estimated_minutes, difficulty, map(5节点 problem/method/evidence/conclusion/limitations), learning_goals(3个), sections(3-4个, 每段含id/title/eyebrow/strict_track/companion_track/source), questions(3道, 每道含id/kind/prompt/hint/source/answer_guide/max_score)。只输出JSON，不用markdown。用中文。"
+    prompt = (
+        f"文件: {filename}\n\n内容摘要:\n{text[:2000]}\n\n生成学习包 JSON: title(标题), "
+        "subtitle(副标题), estimated_minutes, difficulty, "
+        "map(5节点 problem/method/evidence/conclusion/limitations), learning_goals(3个), "
+        "sections(3-4个, 每段含id/title/eyebrow/strict_track/companion_track/source), "
+        "questions(3道, 每道含id/kind/prompt/hint/source/answer_guide/max_score)。"
+        "只输出JSON，不用markdown。用中文。"
+    )
 
     resp = client.chat.completions.create(
         model=model,
@@ -1349,16 +1418,27 @@ async def _ai_generate(filename: str, source_text: str) -> dict:
         "task": "根据以下英文学术材料生成中文翻译和针对性理解题。",
         "text": excerpt,
         "requirements": {
-            "sections_translation": "将原文拆为2-3段，每段给出中文翻译（companion_track），保留原文（strict_track）",
-            "questions": "生成3道中文理解题，针对材料的具体内容，不是通用模板。每道含id(q1/q2/q3)/kind(concept/method/evidence)/prompt/hint/source/answer_guide/max_score。用材料中的术语、公式和具体概念",
-            "map_summaries": "为5个地图节点(problem/method/evidence/conclusion/limitations)各生成一个中文摘要，基于材料实际内容"
+            "sections_translation": (
+                "将原文拆为2-3段，每段给出中文翻译（companion_track），保留原文（strict_track）"
+            ),
+            "questions": (
+                "生成3道中文理解题，针对材料的具体内容，不是通用模板。"
+                "每道含id(q1/q2/q3)/kind(concept/method/evidence)/prompt/hint/source/"
+                "answer_guide/max_score。用材料中的术语、公式和具体概念"
+            ),
+            "map_summaries": (
+                "为5个地图节点(problem/method/evidence/conclusion/limitations)"
+                "各生成一个中文摘要，基于材料实际内容"
+            ),
         }
     }, ensure_ascii=False)
 
     resp = client.chat.completions.create(
         model=model,
         messages=[
-            {"role": "system", "content": "你是学术材料处理引擎。只输出合法JSON，不用markdown代码块。所有文本用中文。"},
+            {"role": "system", "content": (
+                "你是学术材料处理引擎。只输出合法JSON，不用markdown代码块。所有文本用中文。"
+            )},
             {"role": "user", "content": prompt},
         ],
         response_format={"type": "json_object"},
@@ -1420,7 +1500,10 @@ async def upload_material(
 
     # --- AI generation (non-blocking — if it fails, material still works) ---
     ai_data = {}
-    generation = {"status": "fallback", "message": "已先生成原文学习流；AI 题目与陪读内容尚未生成。"}
+    generation = {
+        "status": "fallback",
+        "message": "已先生成原文学习流；AI 题目与陪读内容尚未生成。",
+    }
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     if has_ai and source_text and len(source_text) > 100:
         _require_ai_quota(user_id, "upload")
@@ -1430,12 +1513,24 @@ async def upload_material(
             if ai_data:
                 generation = {"status": "ready", "message": "AI 已生成针对性题目与陪读内容。"}
             else:
-                generation = {"status": "fallback", "message": "AI 未返回可用内容；可在资料库重新生成。"}
+                generation = {
+                    "status": "fallback",
+                    "message": "AI 未返回可用内容；可在资料库重新生成。",
+                }
         except Exception as exc:
-            logger.warning("upload_ai_generation_failed filename=%s error=%s", filename, type(exc).__name__)
-            generation = {"status": "fallback", "message": "AI 生成暂时不可用；可在资料库重新生成。"}
+            logger.warning(
+                "upload_ai_generation_failed filename=%s error=%s",
+                filename, type(exc).__name__,
+            )
+            generation = {
+                "status": "fallback",
+                "message": "AI 生成暂时不可用；可在资料库重新生成。",
+            }
         finally:
-            logger.info("upload_ai_generation_finished filename=%s elapsed_ms=%d status=%s", filename, int((time.monotonic() - started_at) * 1000), generation["status"])
+            logger.info(
+                "upload_ai_generation_finished filename=%s elapsed_ms=%d status=%s",
+                filename, int((time.monotonic() - started_at) * 1000), generation["status"],
+            )
 
     # --- Sections (translated if AI succeeded) ----------------------------
     text_len = len(source_text)
@@ -1475,7 +1570,10 @@ async def upload_material(
                 id=f"s{i+1}", title=["开篇与背景", "核心内容", "结论与要点"][i],
                 eyebrow=f"{filename} · 第{i+1}部分",
                 strict_track=part[:3000],
-                companion_track="尚未完成 AI 陪读生成。可先依据严格轨学习，随后在资料库选择“重新生成”获取针对性讲解。",
+                companion_track=(
+                    "尚未完成 AI 陪读生成。可先依据严格轨学习，"
+                    "随后在资料库选择“重新生成”获取针对性讲解。"
+                ),
                 source=dict(label="上传文件"),
             ))
 
@@ -1486,7 +1584,7 @@ async def upload_material(
     # Position each map node summary at a different part of the text
     map_positions = [0, 0.15, 0.35, 0.60, 0.78]  # fraction into source_text
     map_items = []
-    for key, mtitle, pos in zip(map_keys, map_titles, map_positions):
+    for key, mtitle, pos in zip(map_keys, map_titles, map_positions, strict=True):
         summary = ai_map.get(key, "") if isinstance(ai_map, dict) else ""
         if not summary and source_text and len(source_text) > 100:
             start = int(len(source_text) * pos)
@@ -1500,7 +1598,9 @@ async def upload_material(
             summary = chunk if len(chunk) > 40 else source_text[start:start + 300].strip()
         if not summary:
             summary = "阅读材料后自行总结"
-        map_items.append(dict(key=key, title=mtitle, summary=summary, source=dict(label="上传文件")))
+        map_items.append(dict(
+            key=key, title=mtitle, summary=summary, source=dict(label="上传文件"),
+        ))
 
     # --- Smart questions (AI or generic) ------------------------------------
     ai_questions = ai_data.get("questions", []) if ai_data else []
@@ -1518,13 +1618,15 @@ async def upload_material(
             ))
     else:
         questions = [
-            dict(id="q1", kind="concept", prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
+            dict(id="q1", kind="concept",
+                 prompt="这篇文章/材料要解决什么问题？作者是如何定位这个问题的？",
                  hint="关注开篇的问题陈述和研究动机。", source=dict(label="材料开头"),
                  answer_guide="准确描述研究问题和动机。", max_score=4),
             dict(id="q2", kind="method", prompt="作者使用了什么方法或技术方案？请描述关键步骤。",
                  hint="关注方法部分的具体步骤。", source=dict(label="材料方法部分"),
                  answer_guide="准确描述方法的关键步骤。", max_score=4),
-            dict(id="q3", kind="evidence", prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
+            dict(id="q3", kind="evidence",
+                 prompt="作者得到了什么结论？有什么证据支持，又有哪些局限？",
                  hint="区分论文结论和你自己的推断。", source=dict(label="材料结论部分"),
                  answer_guide="指出结论、证据和局限。", max_score=3),
         ]
@@ -1535,7 +1637,9 @@ async def upload_material(
         source_type=source_type, estimated_minutes=20, difficulty="自助探索",
         progress=0, created_at=datetime.now(UTC).isoformat(),
         map=map_items,
-        learning_goals=["理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现"],
+        learning_goals=[
+        "理解材料要解决的核心问题", "掌握关键方法或技术", "能用自己的话复述主要发现",
+    ],
         sections=sections,
         questions=questions,
         generation=generation,
@@ -1549,15 +1653,15 @@ async def upload_material(
         try:
             _supa_up("materials", {"id": mid, "user_id": user_id, "payload_json": material})
         except Exception as exc:
-            logger.warning("material_persist_failed material_id=%s error=%s", mid, type(exc).__name__)
+            logger.warning(
+                "material_persist_failed material_id=%s error=%s", mid, type(exc).__name__
+            )
             store.delete_material(mid, user_id)
             raise HTTPException(503, "材料暂时无法安全保存，请稍后重试。") from exc
 
     # Keep source excerpts locally.  Embedding them here used to add a second
     # sequential DeepSeek request to upload and delay the first visible lesson.
-    chunk_texts = _chunk_text(source_text[:10000]) if source_text else []
-    if chunk_texts:
-        store.set_chunks(mid, [{"text": chunk} for chunk in chunk_texts])
+    _set_source_chunks(mid, source_text)
 
     return _public_material(material)
 
@@ -1579,7 +1683,10 @@ def delete_material(
         try:
             _supa_del("materials", material_id, user_id)
         except Exception as exc:
-            logger.warning("material_delete_persist_failed material_id=%s error=%s", material_id, type(exc).__name__)
+            logger.warning(
+                "material_delete_persist_failed material_id=%s error=%s",
+                material_id, type(exc).__name__,
+            )
             raise HTTPException(503, "材料暂时无法安全删除，请稍后重试。") from exc
     store.delete_material(material_id, user_id)
     return {"deleted": material_id}
@@ -1614,10 +1721,16 @@ async def regenerate_material(
     try:
         ai_data = await _ai_generate(filename, source_text)
     except Exception as exc:
-        logger.warning("material_regeneration_failed material_id=%s error=%s", material_id, type(exc).__name__)
+        logger.warning(
+            "material_regeneration_failed material_id=%s error=%s",
+            material_id, type(exc).__name__,
+        )
         raise HTTPException(502, "AI 重新生成暂时不可用，请稍后重试。") from exc
     finally:
-        logger.info("material_regeneration_finished material_id=%s elapsed_ms=%d", material_id, int((time.monotonic() - started_at) * 1000))
+        logger.info(
+            "material_regeneration_finished material_id=%s elapsed_ms=%d",
+            material_id, int((time.monotonic() - started_at) * 1000),
+        )
 
     if not ai_data:
         raise HTTPException(502, "AI 没有返回可用内容，请稍后重试。")
@@ -1627,7 +1740,9 @@ async def regenerate_material(
         if ai_sections and isinstance(ai_sections, list):
             existing = list(m.get("sections", []))
             for i, s in enumerate(ai_sections[:len(existing)]):
-                existing[i]["companion_track"] = s.get("companion_track", existing[i].get("companion_track",""))
+                existing[i]["companion_track"] = s.get(
+                    "companion_track", existing[i].get("companion_track","")
+                )
             m["sections"] = existing
 
         ai_map = ai_data.get("map_summaries") or {}
@@ -1656,7 +1771,10 @@ async def regenerate_material(
         try:
             _supa_up("materials", {"id": material_id, "user_id": user_id, "payload_json": m})
         except Exception as exc:
-            logger.warning("material_persist_failed material_id=%s error=%s", material_id, type(exc).__name__)
+            logger.warning(
+                "material_persist_failed material_id=%s error=%s",
+                material_id, type(exc).__name__,
+            )
             store.seed_senet(original_material)
             raise HTTPException(503, "材料更新暂时无法安全保存，请稍后重试。") from exc
 
@@ -1749,10 +1867,16 @@ async def evaluate_session(
                 material_title=material_title,
             )
         except Exception as exc:
-            logger.warning("deepseek_evaluation_failed session_id=%s material_id=%s error=%s", session_id, material_id, type(exc).__name__)
+            logger.warning(
+                "deepseek_evaluation_failed session_id=%s material_id=%s error=%s",
+                session_id, material_id, type(exc).__name__,
+            )
             raise HTTPException(502, "AI 评分暂时不可用，请重试。") from exc
         finally:
-            logger.info("deepseek_evaluation_finished session_id=%s elapsed_ms=%d", session_id, int((time.monotonic() - started_at) * 1000))
+            logger.info(
+                "deepseek_evaluation_finished session_id=%s elapsed_ms=%d",
+                session_id, int((time.monotonic() - started_at) * 1000),
+            )
         result = _normalize_evaluation_result(result, questions)
         result["evaluator"] = "ai"
     else:
@@ -1788,7 +1912,9 @@ async def evaluate_session(
             "completed_at": public_completed.get("completed_at") or datetime.now(UTC).isoformat(),
             "mastery": int(result_payload.get("mastery", 0)),
             "headline": str(result_payload.get("headline", "本次学习已完成"))[:500],
-            "misconception_tags": [str(tag)[:100] for tag in result_payload.get("misconception_tags", [])[:50]],
+            "misconception_tags": [
+                str(tag)[:100] for tag in result_payload.get("misconception_tags", [])[:50]
+            ],
             "retelling": req.retelling,
             "answers": answers,
             "session_data": public_completed,
