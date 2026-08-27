@@ -903,3 +903,10 @@
 - 根因：文档记录的是记录时刻的快照；后续提交部分解决问题时不会同步更新旧描述。
 - 解决：动手前用命令实测（ruff 计数、读代码确认调用链），按实测结果重新界定本轮范围，只修真正残留的缺口。
 - 预防：计划阶段把文档描述当线索而非事实；任何"还剩 N 个问题"的数字在执行前重新跑一遍统计命令确认。
+
+### 113. Vercel 生产部署必须显式携带 team scope，仅靠 whoami 与 project.json 不够
+
+- 现象：用 `git archive` 干净快照（无 Git 元数据、含 `.vercel/project.json`）执行 `vercel --prod --yes` 返回 `Not authorized`；同一账号 `vercel whoami` 正常、且能列出项目。
+- 根因：项目属于 team（`orgId` 以 `team_` 开头），CLI 默认按个人 scope 解析部署目标；project.json 的 orgId 不会在部署时自动切换 scope。第 99 条排除了 Git 元数据因素后，缺 scope 是下一个独立授权维度。
+- 解决：部署命令显式追加 `--scope team_...`（orgId 取自 `.vercel/project.json`），同一快照随即 READY。
+- 预防：生产部署命令模板固化为 `vercel --prod --yes --scope <orgId>`；`Not authorized` 的排查顺序为 whoami → Git 元数据（第 99 条）→ team scope（本条），逐项排除，不修改身份绕过。

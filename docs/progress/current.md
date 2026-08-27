@@ -11,15 +11,16 @@
 - 新功能「多材料专题」本地优先 MVP：专题创建/重命名/删除、材料加入/移出、资料库按专题筛选、专题卡片含成员学习/诊断入口；数据存 localStorage 按 owner 命名空间隔离（`wenqu-topics-v1:<ownerId>`，上限 50），UI 明示「专题分组仅保存在此浏览器」；白名单重建、失效材料标记、匿名不迁移均对齐证据笔记既有模式。跨材料 AI 知识地图需后端支持，本轮未做。
 - 证据笔记云端同步只完成独立安全设计文档 `docs/design/evidence-notes-cloud-sync.md`：evidence_notes 表 DDL、RLS 策略（推荐服务端独占写）、push/pull 增量同步与 LWW 冲突边界、匿名归属不自动迁移、安全约束清单与灰度/回滚方案；topics 云端表已预留。生产数据库迁移未执行，实施需项目所有者单独明确授权。
 - 验证证据：`pnpm check` 全量通过——typecheck、Vite build（1812 modules）、保持率 8 场景、诊断 35 项、证据笔记 50 项、专题 60 项断言、两套 Ruff、py_compile、API 98 项 pytest 全过（仅 1 条既有 Starlette/httpx 第三方弃用警告）。
-- 本轮改动未提交、未推送、未部署；Vercel Production 仍运行 2026-08-26 版本。
+- 发布：PR [#48](https://github.com/lizhuofan-curry/wenqu/pull/48) 的 Web/API CI 通过，普通 merge 合入 `main`，合并提交 `333c444`；main push CI 运行 `33048511710` 成功。按精确干净快照（`git archive 333c444`，无 Git 元数据）发布 Vercel Production：部署 `dpl_DouYLHNBFXq64djRhkLA8FSuKBKA` 为 READY（首次部署因缺少 team scope 返回 Not authorized，按复盘第 318 条补 `--scope` 后成功）。
+- 生产验收：`https://wenqu.zhuofan.me/` 返回 HTTP 200，`/api/health` 返回 `status=ok, version=v.5`；生产 HTML 加载新资源 `index-9fUQiUpw.css`（与本地构建哈希一致）/`index-DToomYrg.js`，且生产 JS 构件已确认包含 `wenqu-topics-v1`、「专题分组仅保存在此浏览器」「我的专题」标记，首页字体链接含 `Inter:wght`。本轮未执行任何数据库迁移。
 
 ### 当前阶段
 
-**阶段：本轮四项工作已在本地完成并通过全量门禁；未发布。云端同步设计文档待所有者评审与迁移授权；专题云端化依赖该迁移。**
+**阶段：工程质量清理、排版边框收口与本地多材料专题已上线；PR、main CI、Vercel Production 与生产功能标记均已验证。云端同步设计文档已发布，实施待所有者评审与迁移授权。**
 
 ### 当前最高优先级
 
-请项目所有者分别使用一台真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐物理终端双链路证据（用户侧事项，保持不变）。随后评审云端同步设计文档并决定是否授权生产迁移；本轮本地改动待确认后再提交推送。
+请项目所有者分别使用一台真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐物理终端双链路证据（用户侧事项，保持不变），顺带在真机上查看新排版与「我的专题」。随后评审云端同步设计文档并决定是否授权生产迁移。
 
 最后更新：2026-08-27
 
