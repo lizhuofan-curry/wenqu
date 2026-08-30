@@ -2,6 +2,25 @@
 
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
+## 2026-08-31｜全项目安全审计与自动修复
+
+- 上传滥用收口：所有合法上传（包括短文本和未配置 AI 的请求）现在都会原子消耗 `upload` 日额度；读取/解析文件前先检查额度，并在 Supabase 持久化场景下限制每账号最多 50 份材料，容量查询异常时安全失败，不继续写入。
+- AI 输出边界收口：上传材料的 AI JSON 改用严格 Pydantic 模型校验，禁止额外字段，限制列表数量、文本长度和分值范围；畸形但语法合法的 JSON 不再向后续 `.get()` 链传播，生成失败继续安全降级为原文学习流。
+- 信息与旧服务收口：两个健康接口仅公开 `status` 与 `version`；旧版 SQLite FastAPI 服务只允许 development/test 启动，并拒绝非本机客户端，避免误暴露无账号隔离的本地存储 API。
+- 供应链加固：Python 直接依赖固定为本轮已运行版本；`pytest` 从命中 `PYSEC-2026-1845` 的 8.4.2 升级到 9.1.1；CI 新增两组 `pip-audit`，四个第三方 GitHub Actions 均固定到已解析的 commit SHA。
+- GitHub 仓库安全设置：Dependabot security updates、secret scanning、push protection 已启用；`main` 已启用基础分支保护，禁止强推和删除但不改变正常直接推送习惯。账户当前未提供 non-provider patterns 与 validity checks，API 请求后复读仍为 disabled，未虚报开启。
+- 验证证据：受影响回归 38 passed；完整 `pnpm check` 通过（Vite 1812 modules、Web 8/35/50/60 assertions、Ruff/py_compile、API 102 passed）；`pnpm db:check` 通过；`pip-audit 2.10.1` 对生产与开发依赖均返回 `No known vulnerabilities found`。仅保留既有 Starlette/httpx 第三方弃用警告。
+- 发布边界：本轮没有执行数据库迁移，也没有部署或切换 Vercel Production；生产仍是上一轮已验证快照。
+
+### 当前阶段
+
+**阶段：安全审计中确认的上传滥用、AI 结构校验、健康信息泄露、旧服务误暴露和供应链缺口均已本地修复并通过完整门禁；GitHub 仓库安全设置已加固，等待安全分支 PR 的远端 CI。**
+
+### 当前最高优先级
+
+将本轮修复提交到 `codex/security-audit-fix-20260831` 并创建 PR，等待 Web/API CI 均通过；不要自动合并或发布 Production，生产切换仍需项目所有者单独授权。
+
+最后更新：2026-08-31
 
 ## 2026-08-27｜工程质量清理、排版边框收口、本地多材料专题与云端同步设计文档
 
@@ -302,7 +321,7 @@
 - 新增 `202608240001_security_hardening.sql`：materials owner 外键/索引、保留 ID 约束、4 表 Force RLS、10 条 owner 策略、仅 service role 可直连材料表，以及 service-role-only 的 UTC 原子 AI 日配额（evaluate/upload/regenerate = 50/10/10）。旧 ownerless 材料保留但普通账号不可见、不可写。
 - CI 新增 `pnpm audit --audit-level high`；构建链 `nanoid` 升至 3.3.18；Vercel 增加 CSP、点击劫持、MIME、Referrer 与 Permissions 安全响应头。
 - 新增生产 API 安全回归矩阵；完整 `pnpm check` 通过，其中 API 测试为 **23 passed**，仅有 1 条第三方 Starlette/httpx 弃用警告。前端强制 TypeScript 检查与生产构建、JavaScript 高危审计、生产 API Python 编译与 Ruff E9/F 均通过。
-- 修复已发布到 `codex/security-hardening-main`：该分支从最新 `origin/main`（`8ed99be`）重建，移植完成时相对主线 behind 0 / ahead 1；核心安全提交 `65b6e89`，认证竞态修复提交 `282f2b3`；草稿 PR #24 为 `MERGEABLE` / `CLEAN`，Web 与 API 两项 CI 均成功。旧 PR #23 已关闭，旧分支 `codex/security-hardening` 保留作历史记录。
+- 修复已发布到 `codex/security-audit-fix-20260831-main`：该分支从最新 `origin/main`（`8ed99be`）重建，移植完成时相对主线 behind 0 / ahead 1；核心安全提交 `65b6e89`，认证竞态修复提交 `282f2b3`；草稿 PR #24 为 `MERGEABLE` / `CLEAN`，Web 与 API 两项 CI 均成功。旧 PR #23 已关闭，旧分支 `codex/security-audit-fix-20260831` 保留作历史记录。
 - 用户已明确接受“Free Plan 无可用备份，且迁移后 3 条无所有者历史材料对普通账号不可见”的具体影响。
 - 数据库只应用了 `202608240001_security_hardening.sql`；随后 `pnpm db:check` 通过，确认 4 张表启用并强制 RLS、10 条账号隔离策略、材料 owner 索引以及 AI 配额 RPC 与权限均符合预期。
 - Preview 首轮发现动态 API 缺失静态安全响应头后，已在应用中间件强制 `no-store` 与安全头；修复提交为 `f474e6c`。

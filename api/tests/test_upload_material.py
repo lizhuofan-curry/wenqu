@@ -1,3 +1,4 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from api import index
@@ -111,6 +112,77 @@ def test_short_markdown_upload_builds_a_readable_learning_flow(monkeypatch):
         index.store._sessions = original_sessions
         index.store._chunks = original_chunks
 
+
+def test_short_upload_consumes_upload_quota(monkeypatch):
+    client = TestClient(index.app)
+    calls = []
+    _enable_authenticated_user(monkeypatch)
+    monkeypatch.setattr(
+        index,
+        "_consume_ai_quota",
+        lambda user_id, action: calls.append((user_id, action)) or True,
+    )
+
+    response = client.post(
+        "/api/materials/upload",
+        headers=AUTH,
+        files={"file": ("tiny.md", b"# tiny", "text/markdown")},
+    )
+
+    assert response.status_code == 201, response.text
+    assert calls == [("test-user", "upload")]
+
+
+def test_upload_quota_is_checked_before_parsing(monkeypatch):
+    client = TestClient(index.app)
+    _enable_authenticated_user(monkeypatch)
+    monkeypatch.setattr(index, "_consume_ai_quota", lambda _user_id, _action: False)
+    monkeypatch.setattr(
+        index,
+        "_extract_text",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("parser must not run")),
+    )
+
+    response = client.post(
+        "/api/materials/upload",
+        headers=AUTH,
+        files={"file": ("tiny.md", b"# tiny", "text/markdown")},
+    )
+
+    assert response.status_code == 429
+
+
+def test_upload_capacity_fails_closed_at_account_limit(monkeypatch):
+    client = TestClient(index.app)
+    _enable_authenticated_user(monkeypatch)
+    monkeypatch.setattr(index, "_supa_ok", lambda: True)
+    monkeypatch.setattr(
+        index,
+        "_supa_get",
+        lambda _path: [{"id": f"material-{i}"} for i in range(index.MAX_MATERIALS_PER_USER)],
+    )
+    monkeypatch.setattr(
+        index,
+        "_consume_ai_quota",
+        lambda *_args: (_ for _ in ()).throw(AssertionError("quota must not be consumed")),
+    )
+
+    response = client.post(
+        "/api/materials/upload",
+        headers=AUTH,
+        files={"file": ("tiny.md", b"# tiny", "text/markdown")},
+    )
+
+    assert response.status_code == 409
+
+
+def test_ai_upload_payload_rejects_unexpected_shapes():
+    with pytest.raises(ValueError):
+        index.AIUploadPayload.model_validate_json('[{"unexpected": true}]')
+    with pytest.raises(ValueError):
+        index.AIUploadPayload.model_validate(
+            {"questions": [{"prompt": "ok", "max_score": 999}]}
+        )
 
 def test_uploaded_material_keeps_source_chunks_without_embedding_call(monkeypatch):
     """A first upload must not queue a second remote embedding request."""

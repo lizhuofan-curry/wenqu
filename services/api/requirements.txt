@@ -1,7 +1,7 @@
-fastapi>=0.116,<1
-uvicorn[standard]>=0.35,<1
-openai>=1.100,<3
-python-dotenv>=1.1,<2
-python-multipart>=0.0.20,<1
-pymupdf>=1.26,<2
-psycopg[binary]>=3.2,<4
+fastapi==0.140.0
+uvicorn[standard]==0.51.0
+openai==2.48.0
+python-dotenv==1.2.2
+python-multipart==0.0.32
+pymupdf==1.28.0
+psycopg[binary]==3.3.4

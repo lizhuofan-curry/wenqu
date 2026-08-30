@@ -35,13 +35,15 @@ from pathlib import Path as FilePath  # noqa: E402
 
 from fastapi import FastAPI, Header, HTTPException, Request, UploadFile  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
-from pydantic import BaseModel, Field  # noqa: E402
+from pydantic import BaseModel, ConfigDict, Field  # noqa: E402
 
 from api.diagnostic_routes import register_diagnostic_routes  # noqa: E402
 from api.transfer_core import material_rubric_fingerprint  # noqa: E402
 from api.transfer_routes import register_transfer_routes  # noqa: E402
 
 logger = logging.getLogger(__name__)
+
+MAX_MATERIALS_PER_USER = 50
 
 # --- Supabase REST helper (raw HTTP) ------------------------------------------
 _supa_url = (
@@ -262,6 +264,27 @@ def _consume_ai_quota(user_id: str, action: str) -> bool:
 def _require_ai_quota(user_id: str, action: str) -> None:
     if not _consume_ai_quota(user_id, action):
         raise HTTPException(429, "今日 AI 使用额度已用完，请明天再试。")
+
+
+def _require_upload_capacity(user_id: str) -> None:
+    """Fail closed when one account has reached its persisted material cap."""
+    if not _supa_ok():
+        return
+    encoded_user = _urlparse.quote(user_id, safe="")
+    try:
+        rows = _supa_get(
+            "materials?select=id"
+            f"&user_id=eq.{encoded_user}"
+            f"&limit={MAX_MATERIALS_PER_USER + 1}"
+        )
+    except Exception as exc:
+        logger.warning("material_capacity_check_failed error=%s", type(exc).__name__)
+        raise HTTPException(503, "材料容量暂时无法安全校验，请稍后重试。") from exc
+    if len(rows or []) >= MAX_MATERIALS_PER_USER:
+        raise HTTPException(
+            409,
+            f"每个账号最多保存 {MAX_MATERIALS_PER_USER} 份材料，请删除旧材料后重试。",
+        )
 
 
 def _load_supa_materials(user_id: str):
@@ -1248,22 +1271,7 @@ def _normalize_evaluation_result(result: dict, questions: list[dict]) -> dict:
 
 @app.get("/api/health")
 def health() -> dict:
-    ai_configured = (
-        bool(settings.deepseek_api_key) if settings.ai_provider == "deepseek"
-        else bool(settings.openai_api_key)
-    )
-    return {
-        "status": "ok",
-        "version": "v.5",
-        "ai_configured": ai_configured,
-        "archive_retry_configured": _archive_retry_key() is not None,
-        "ai_provider": settings.ai_provider,
-        "model": (
-            settings.deepseek_model
-            if settings.ai_provider == "deepseek"
-            else settings.openai_model
-        ),
-    }
+    return {"status": "ok", "version": "v.5"}
 
 
 @app.get("/api/personas")
@@ -1354,6 +1362,44 @@ class MaterialGeneratePayload(BaseModel):
     learning_goals: list[str]
     sections: list[dict]
     questions: list[dict]
+
+
+class AISectionTranslation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    title: str = Field(default="", max_length=200)
+    strict_track: str = Field(default="", max_length=3000)
+    companion_track: str = Field(default="", max_length=2000)
+
+
+class AIQuestionPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(default="", max_length=16)
+    kind: str = Field(default="concept", max_length=32)
+    prompt: str = Field(default="", max_length=1000)
+    hint: str = Field(default="", max_length=500)
+    source: str = Field(default="", max_length=500)
+    answer_guide: str = Field(default="", max_length=2000)
+    max_score: int = Field(default=4, ge=1, le=20)
+
+
+class AIMapSummaries(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    problem: str = Field(default="", max_length=1000)
+    method: str = Field(default="", max_length=1000)
+    evidence: str = Field(default="", max_length=1000)
+    conclusion: str = Field(default="", max_length=1000)
+    limitations: str = Field(default="", max_length=1000)
+
+
+class AIUploadPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    sections_translation: list[AISectionTranslation] = Field(default_factory=list, max_length=3)
+    questions: list[AIQuestionPayload] = Field(default_factory=list, max_length=3)
+    map_summaries: AIMapSummaries = Field(default_factory=AIMapSummaries)
 
 
 async def _generate_material_via_ai(filename: str, text: str) -> dict:
@@ -1450,10 +1496,7 @@ async def _ai_generate(filename: str, source_text: str) -> dict:
     raw = resp.choices[0].message.content
     if not raw:
         return {}
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {}
+    return AIUploadPayload.model_validate_json(raw).model_dump()
 
 
 @app.post("/api/materials/upload", status_code=201)
@@ -1481,6 +1524,10 @@ async def upload_material(
         raise HTTPException(400, "文件类型与扩展名不匹配。")
     source_type = "pdf" if suffix == ".pdf" else "markdown"
 
+    _require_upload_capacity(user_id)
+    if not _consume_ai_quota(user_id, "upload"):
+        raise HTTPException(429, "今日材料上传额度已用完，请明天再试。")
+
     content = await file.read(10 * 1024 * 1024 + 1)
     if len(content) > 10 * 1024 * 1024:
         raise HTTPException(413, "文件不能超过 10 MB。")
@@ -1506,7 +1553,6 @@ async def upload_material(
     }
     has_ai = bool(os.getenv("DEEPSEEK_API_KEY"))
     if has_ai and source_text and len(source_text) > 100:
-        _require_ai_quota(user_id, "upload")
         started_at = time.monotonic()
         try:
             ai_data = await _ai_generate(filename, source_text)
