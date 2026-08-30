@@ -10,15 +10,16 @@
 - 供应链加固：Python 直接依赖固定为本轮已运行版本；`pytest` 从命中 `PYSEC-2026-1845` 的 8.4.2 升级到 9.1.1；CI 新增两组 `pip-audit`，四个第三方 GitHub Actions 均固定到已解析的 commit SHA。
 - GitHub 仓库安全设置：Dependabot security updates、secret scanning、push protection 已启用；`main` 已启用基础分支保护，禁止强推和删除但不改变正常直接推送习惯。账户当前未提供 non-provider patterns 与 validity checks，API 请求后复读仍为 disabled，未虚报开启。
 - 验证证据：受影响回归 38 passed；完整 `pnpm check` 通过（Vite 1812 modules、Web 8/35/50/60 assertions、Ruff/py_compile、API 102 passed）；`pnpm db:check` 通过；`pip-audit 2.10.1` 对生产与开发依赖均返回 `No known vulnerabilities found`。仅保留既有 Starlette/httpx 第三方弃用警告。
+- 远端验证：安全分支提交 `60c6844` 已推送并创建 PR [#49](https://github.com/lizhuofan-curry/wenqu/pull/49)；GitHub Actions 运行 `33323213913` 的 Web/API 两项均通过。
 - 发布边界：本轮没有执行数据库迁移，也没有部署或切换 Vercel Production；生产仍是上一轮已验证快照。
 
 ### 当前阶段
 
-**阶段：安全审计中确认的上传滥用、AI 结构校验、健康信息泄露、旧服务误暴露和供应链缺口均已本地修复并通过完整门禁；GitHub 仓库安全设置已加固，等待安全分支 PR 的远端 CI。**
+**阶段：安全审计中确认的上传滥用、AI 结构校验、健康信息泄露、旧服务误暴露和供应链缺口均已修复；本地完整门禁与 PR #49 远端 Web/API CI 均通过，尚未合并或部署 Production。**
 
 ### 当前最高优先级
 
-将本轮修复提交到 `codex/security-audit-fix-20260831` 并创建 PR，等待 Web/API CI 均通过；不要自动合并或发布 Production，生产切换仍需项目所有者单独授权。
+请项目所有者审阅 PR #49；合并与 Production 发布继续保持两个独立授权步骤，本轮不自动合并、不自动部署。
 
 最后更新：2026-08-31
 
