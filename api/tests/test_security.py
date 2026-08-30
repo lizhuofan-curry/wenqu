@@ -160,16 +160,11 @@ def test_health_response_has_security_headers(api_client):
     )
 
 
-def test_health_reports_archive_retry_configuration(api_client, monkeypatch):
-    monkeypatch.setattr(index, "_archive_retry_secret", "short")
-    disabled = api_client.get("/api/health")
-    assert disabled.status_code == 200
-    assert disabled.json()["archive_retry_configured"] is False
+def test_health_does_not_expose_runtime_configuration(api_client):
+    response = api_client.get("/api/health")
 
-    monkeypatch.setattr(index, "_archive_retry_secret", "x" * 32)
-    enabled = api_client.get("/api/health")
-    assert enabled.status_code == 200
-    assert enabled.json()["archive_retry_configured"] is True
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "version": "v.5"}
 
 
 def test_anonymous_only_sees_builtin_and_private_routes_require_auth(api_client):

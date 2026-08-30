@@ -4,11 +4,13 @@ import json
 import uuid
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from ipaddress import ip_address
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from .ai import AIServiceError, evaluate_with_ai, extract_source, generate_material
 from .config import settings
@@ -29,6 +31,8 @@ from .store import store
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    if settings.app_env not in {"development", "test"}:
+        raise RuntimeError("The SQLite API is local-development only.")
     store.initialize()
     yield
 
@@ -43,26 +47,27 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def require_loopback_client(request: Request, call_next):
+    host = request.client.host if request.client else ""
+    if host == "testclient" and settings.app_env in {"development", "test"}:
+        return await call_next(request)
+    try:
+        is_loopback = ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback:
+        return JSONResponse(status_code=403, content={"detail": "Local API only."})
+    return await call_next(request)
+
+
 def public_material(material: MaterialInternal) -> MaterialPublic:
     return MaterialPublic.model_validate(material.model_dump())
 
 
 @app.get("/api/health")
-def health() -> dict[str, str | bool]:
-    provider = settings.ai_provider
-    ai_configured = (
-        bool(settings.deepseek_api_key)
-        if provider == "deepseek"
-        else bool(settings.openai_api_key)
-    )
-    model = settings.deepseek_model if provider == "deepseek" else settings.openai_model
-    return {
-        "status": "ok",
-        "version": "v.5",
-        "ai_configured": ai_configured,
-        "ai_provider": provider,
-        "model": model,
-    }
+def health() -> dict[str, str]:
+    return {"status": "ok", "version": "v.5"}
 
 
 @app.get("/api/personas", response_model=list[Persona])
