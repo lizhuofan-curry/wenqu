@@ -10,16 +10,17 @@
 - 供应链加固：Python 直接依赖固定为本轮已运行版本；`pytest` 从命中 `PYSEC-2026-1845` 的 8.4.2 升级到 9.1.1；CI 新增两组 `pip-audit`，四个第三方 GitHub Actions 均固定到已解析的 commit SHA。
 - GitHub 仓库安全设置：Dependabot security updates、secret scanning、push protection 已启用；`main` 已启用基础分支保护，禁止强推和删除但不改变正常直接推送习惯。账户当前未提供 non-provider patterns 与 validity checks，API 请求后复读仍为 disabled，未虚报开启。
 - 验证证据：受影响回归 38 passed；完整 `pnpm check` 通过（Vite 1812 modules、Web 8/35/50/60 assertions、Ruff/py_compile、API 102 passed）；`pnpm db:check` 通过；`pip-audit 2.10.1` 对生产与开发依赖均返回 `No known vulnerabilities found`。仅保留既有 Starlette/httpx 第三方弃用警告。
-- 远端验证：安全分支提交 `60c6844` 已推送并创建 PR [#49](https://github.com/lizhuofan-curry/wenqu/pull/49)；GitHub Actions 运行 `33323213913` 的 Web/API 两项均通过。
-- 发布边界：本轮没有执行数据库迁移，也没有部署或切换 Vercel Production；生产仍是上一轮已验证快照。
+- 远端合并：PR [#49](https://github.com/lizhuofan-curry/wenqu/pull/49) 的 Web/API CI 通过后已普通 merge 合入 `main`，合并提交 `a523a043f5269d98f5a14ec69ad1cce09a0b3cb0`；main CI 运行 `33342963480` 的 Web/API 两项均通过，包括新加入的 Python 依赖审计。
+- 生产部署：从合并提交 `a523a043` 创建包含 157 个文件、无 `.git` 元数据的精确归档，使用固定 Vercel CLI 59.10.0 与显式 team scope 发布；部署 `dpl_3kdn8pMGtYfhomNASE5ZfVGGh3Hq` 为 READY，已绑定 `https://wenqu.zhuofan.me` 与备用域。第一次归档因本地尚未 fetch 合并提交而失败，空快照部署 `dpl_49QkKaJVU1nXAGXGy599hubPFmQX` 构建失败且未切换生产别名；随后增加 commit 类型、关键文件、文件数量与 Git 元数据检查后重新部署成功。
+- 生产验收：主域首页 HTTP 200；`/api/health` 精确返回 `{"status":"ok","version":"v.5"}`，不再公开 AI/恢复配置；响应继续包含 HSTS、`nosniff`、`DENY`、Permissions-Policy 与 `no-store`。匿名材料上传返回 401，恶意 Origin 预检返回 400 且无 `Access-Control-Allow-Origin`；Vercel 最近 10 分钟错误级日志为 0。本轮未执行数据库迁移。
 
 ### 当前阶段
 
-**阶段：安全审计中确认的上传滥用、AI 结构校验、健康信息泄露、旧服务误暴露和供应链缺口均已修复；本地完整门禁与 PR #49 远端 Web/API CI 均通过，尚未合并或部署 Production。**
+**阶段：安全修复已合入 main 并发布 Vercel Production；PR、main CI、精确部署快照、生产健康/鉴权/CORS/安全头与错误日志均已验证。**
 
 ### 当前最高优先级
 
-请项目所有者审阅 PR #49；合并与 Production 发布继续保持两个独立授权步骤，本轮不自动合并、不自动部署。
+请项目所有者分别使用真实手机的 Wi-Fi 与蜂窝网络打开 `https://wenqu.zhuofan.me/`，补齐物理终端双链路证据；服务端安全修复与受控线上验收已完成。
 
 最后更新：2026-08-31
 
