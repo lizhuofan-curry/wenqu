@@ -18,7 +18,7 @@
     "check": "pnpm typecheck && pnpm build && pnpm test:web:retention && pnpm test:web:diagnostic && pnpm test:web:evidence-notes && pnpm test:web:topics && pnpm check:api && pnpm check:vercel-api && pnpm test:api"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.5"
   },
   "packageManager": "pnpm@11.9.0"
 }
