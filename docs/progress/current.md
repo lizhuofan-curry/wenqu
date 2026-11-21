@@ -1,5 +1,15 @@
 # 问渠｜当前项目进展
 
+## 2026-11-21｜PR #54 依赖审计修复
+
+- 本轮阶段：已定位并修复旧依赖锁定导致的前端审计失败，继续在原 PR 分支验证；未合并、未部署，原有生产及真实用户验证待办保留。
+- 范围：根 `package.json` 将 concurrently 的最低兼容版本提高到 9.2.5，`pnpm-lock.yaml` 仅更新 concurrently 9.2.4 → 9.2.5 和 shell-quote 1.9.0 → 1.12.0；保留本 PR 的 Vite 7.3.7 更新及其他解析结果。
+- 依据：失败运行 [40253455508](https://github.com/lizhuofan-curry/wenqu/actions/runs/40253455508) 在 `pnpm audit --audit-level high` 检出 [GHSA-pqg4-j6r4-53mv](https://github.com/advisories/GHSA-pqg4-j6r4-53mv)，依赖路径为 concurrently → shell-quote。
+- 已核对：依赖清单/锁文件一致，更新包的完整性与快照复用本仓库 PR #53 已通过 CI 的记录，其余锁定数据未改变；没有删除审计或降低失败阈值。
+- 验证边界：本机完整源码下载受网络限制，不能声称本机完整构建通过；最新提交的依赖审计、TypeScript、生产构建和 API 检查以 [PR #54 的当前 CI](https://github.com/lizhuofan-curry/wenqu/pull/54/checks) 为准，具体回执写入该 PR 描述。
+- 本轮最高优先级：跟进当前提交 CI 并修复真实失败；通过后继续原有生产监控/真实用户验证，不自动部署或合并。
+
+
 > 本文档是项目的实时进度基线。每次完成实际工作后，由 Codex 自动更新；版本里程碑另存于 `docs/progress/v.x.md`。
 
 ## 2026-08-31｜全项目安全审计与自动修复
